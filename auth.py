@@ -7,7 +7,7 @@ def authenticate_user(username, password, *args, **kwargs):
         res = supabase.table("users").select("*").eq("username", username).eq("password", password).execute()
         if res.data and len(res.data) > 0:
             user = res.data[0]
-            # شناسه باشگاه همان نام کاربری کاربر است
+            # بازیابی شناسه/نام اختصاصی باشگاه کاربر
             club_id = user.get("club_id", username)
             return True, club_id
         return False, ""
@@ -15,12 +15,11 @@ def authenticate_user(username, password, *args, **kwargs):
         st.error(f"خطا در احراز هویت: {e}")
         return False, ""
 
-def add_user(username, password, *args, **kwargs):
-    """ثبت نام مدیر جدید و اختصاص شناسه باشگاه بر اساس نام کاربری"""
+def add_user(username, password, club_name=None, role="admin", *args, **kwargs):
+    """ثبت نام مدیر جدید و اختصاص نام مجزای باشگاه"""
     try:
-        # شناسه باشگاه دقیقاً برابر با نام کاربری قرار می‌گیرد
-        club_id = username.strip()
-        role = "admin"
+        # اگر نام باشگاه جداگانه وارد شده باشد از آن استفاده می‌شود، در غیر این صورت نام کاربری جایگزین می‌شود
+        club_id = club_name.strip() if club_name and club_name.strip() else username.strip()
 
         data = {
             "username": username.strip(),
