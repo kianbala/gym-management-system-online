@@ -2,11 +2,26 @@ import os
 from datetime import datetime
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# خواندن کلیدها از Secrets استریم‌لیت یا فایل .env محلی
-SUPABASE_URL = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+# بارگذاری متغیرهای محیطی از فایل .env محلی (در صورت وجود)
+load_dotenv()
+
+# ابتدا بررسی متغیرها از Streamlit Secrets و در صورت عدم وجود از .env محلی
+SUPABASE_URL = None
+SUPABASE_KEY = None
+
+try:
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+except Exception:
+    pass
+
+if not SUPABASE_URL:
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+if not SUPABASE_KEY:
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 

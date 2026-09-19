@@ -3,17 +3,17 @@ from datetime import datetime, timedelta
 from db_manager import supabase
 
 FIRST_NAMES = [
-    'علی', 'محمد', 'امیر', 'حسین', 'مهدی', 'رضا', 'سروش', 'آرش', 'کامران', 'نوید',
-    'سارا', 'نیلوفر', 'مریم', 'زهرا', 'پریسا', 'فاطمه', 'مهرنوش', 'کیانا', 'مینا', 'نرگس'
+    'Ali', 'Mohammad', 'Amir', 'Hossein', 'Mehdi', 'Reza', 'Soroush', 'Arash', 'Kamran', 'Navid',
+    'Sara', 'Niloofar', 'Maryam', 'Zahra', 'Parisa', 'Fatemeh', 'Mehrnoosh', 'Kiana', 'Mina', 'Narges'
 ]
 
 LAST_NAMES = [
-    'رضایی', 'محمدی', 'احمدی', 'کریمی', 'حسینی', 'کاظمی', 'قاسمی', 'نوری', 'مرادی', 'ابراهیمی',
-    'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
+    'Rezayi', 'Mohammadi', 'Ahmadi', 'Karimi', 'Hosseini', 'Kazemi', 'Ghasemi', 'Nouri', 'Moradi', 'Ebrahimi',
+    'Sadeghi', 'Heidari', 'Mousavi', 'Najafi', 'Mozaffari', 'Sharifi', 'Farahani', 'Jafari', 'Akbari', 'Bagheri'
 ]
 
 def generate_dummy_data_for_club(club_id):
-    print(f"⏳ در حال افزودن ۳۰ عضو نمونه و تاریخچه تردد برای باشگاه: {club_id} ...")
+    print(f"⏳ Adding 30 sample members and attendance history for club: {club_id} ...")
     now = datetime.now()
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
@@ -30,7 +30,7 @@ def generate_dummy_data_for_club(club_id):
         national_id = f"{1000000000 + (unique_seed * 123) % 899999999}"[:10]
         phone_number = f"0912{random.randint(1000000, 9999999)}"
 
-        # 🎯 تعیین وضعیت اعتبار و تاریخ عضویت
+        # 🎯 Determine subscription status and join date
         sub_status = random.choices(['active', 'expired'], weights=[0.80, 0.20])[0]
 
         if sub_status == 'expired':
@@ -51,7 +51,7 @@ def generate_dummy_data_for_club(club_id):
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
 
-        # ۱. ثبت عضو در Supabase
+        # 1. Insert member into Supabase
         member_data = {
             "name": full_name,
             "phone": phone_number,
@@ -68,7 +68,7 @@ def generate_dummy_data_for_club(club_id):
 
         member_id = member_res.data[0]['id']
 
-        # ۲. ثبت آخرین تردد
+        # 2. Insert last check-in
         hour = random.choice(all_hours)
         minute = random.randint(0, 59)
         last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
@@ -79,7 +79,7 @@ def generate_dummy_data_for_club(club_id):
             "club_id": club_id
         }]
 
-        # ۳. ثبت تردد‌های گذشته به صورت تصادفی
+        # 3. Insert random past attendance records
         used_sessions = random.randint(2, 8)
         for _ in range(used_sessions):
             past_days_ago = random.randint(last_checkin_days_ago + 1, days_active)
@@ -96,12 +96,12 @@ def generate_dummy_data_for_club(club_id):
         supabase.table("attendance").insert(attendance_records).execute()
         added_count += 1
 
-    print(f"✅ با موفقیت {added_count} عضو و تاریخچه تردد نمونه برای اکانت '{club_id}' در Supabase ایجاد شدند!")
+    print(f"✅ Successfully created {added_count} sample members and attendance history for account '{club_id}' in Supabase!")
 
 if __name__ == "__main__":
-    # نام اکانتی که می‌خواهید برای آن اعضای نمونه درست شود را بنویسید:
-    target_club = input("نام کاربری اکانت/باشگاه مورد نظر را وارد کنید (مثلا kian): ").strip()
+    # Enter the username of the account/club you want to create sample members for:
+    target_club = input("Enter the username of the account/club (e.g., kian): ").strip()
     if target_club:
         generate_dummy_data_for_club(target_club)
     else:
-        print("❌ نام کاربری وارد نشد.")
+        print("❌ Username was not provided.")
