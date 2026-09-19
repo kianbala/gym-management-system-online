@@ -79,10 +79,14 @@ def generate_dummy_data_for_club(club_id):
             "club_id": club_id
         }]
 
-        # 3. Insert random past attendance records
+# 3. Insert random past attendance records
         used_sessions = random.randint(2, 8)
         for _ in range(used_sessions):
-            past_days_ago = random.randint(last_checkin_days_ago + 1, days_active)
+            # جلوگیری از خطای range با بررسی کوچک‌تر بودن محدوده
+            min_past = last_checkin_days_ago + 1
+            max_past = max(min_past, days_active)
+            
+            past_days_ago = random.randint(min_past, max_past)
             past_hour = random.choice(all_hours)
             past_minute = random.randint(0, 59)
             past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
@@ -92,16 +96,3 @@ def generate_dummy_data_for_club(club_id):
                 "check_in_time": past_checkin_time.isoformat(),
                 "club_id": club_id
             })
-
-        supabase.table("attendance").insert(attendance_records).execute()
-        added_count += 1
-
-    print(f"✅ Successfully created {added_count} sample members and attendance history for account '{club_id}' in Supabase!")
-
-if __name__ == "__main__":
-    # Enter the username of the account/club you want to create sample members for:
-    target_club = input("Enter the username of the account/club (e.g., kian): ").strip()
-    if target_club:
-        generate_dummy_data_for_club(target_club)
-    else:
-        print("❌ Username was not provided.")
