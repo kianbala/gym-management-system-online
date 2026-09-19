@@ -74,14 +74,15 @@ if not st.session_state.logged_in:
         # تب ثبت‌نام
         with tab_register:
             with st.form("register_form"):
-                reg_username = st.text_input("نام کاربری مدیر / نام باشگاه")
+                reg_username = st.text_input("نام کاربری مدیر")
+                reg_club_name = st.text_input("نام باشگاه / شرکت")
                 reg_password = st.text_input("رمز عبور", type="password")
                 submit_reg = st.form_submit_button("ساخت حساب باشگاه جدید", type="primary")
                 
                 if submit_reg:
-                    if reg_username.strip() and reg_password.strip():
-                        if add_user(reg_username, reg_password):
-                            st.success("حساب باشگاه با موفقیت ساخته شد! اکنون می‌توانید وارد شوید.")
+                    if reg_username.strip() and reg_password.strip() and reg_club_name.strip():
+                        if add_user(reg_username, reg_password, club_name=reg_club_name):
+                            st.success(f"باشگاه '{reg_club_name}' با مدیریت '{reg_username}' با موفقیت ساخته شد! اکنون می‌توانید وارد شوید.")
                         else:
                             st.error("خطا در ساخت حساب (احتمالاً این نام کاربری قبلاً ثبت شده است).")
                     else:
@@ -114,7 +115,7 @@ else:
 
     # ۱. مشاهده اعضا
     if choice == "داشبورد و اعضا":
-        st.subheader(f"📋 لیست اعضای ثبت‌شده در باشگاه {st.session_state.username}")
+        st.subheader(f"📋 لیست اعضای ثبت‌شده در باشگاه {st.session_state.club_id}")
         search_query = st.text_input("🔍 جستجوی عضو (نام یا کد ملی):")
         
         members = search_member(search_query, club_id) if search_query.strip() else get_all_members(club_id)
@@ -240,13 +241,16 @@ else:
     elif choice == "⚙️ ساخت باشگاه/مدیر جدید":
         st.subheader("👤 ساخت حساب باشگاه جدید")
         with st.form("new_user_form", clear_on_submit=True):
-            new_username = st.text_input("نام کاربری جدید (نام باشگاه)")
+            new_username = st.text_input("نام کاربری جدید مدیر")
+            new_club_name = st.text_input("نام جدید باشگاه / شرکت")
             new_password = st.text_input("رمز عبور جدید", type="password")
             submit_user = st.form_submit_button("ایجاد حساب باشگاه")
             
             if submit_user:
-                if new_username.strip() and new_password.strip():
-                    if add_user(new_username, new_password):
-                        st.success(f"حساب باشگاه جدید ({new_username}) با موفقیت ایجاد شد.")
+                if new_username.strip() and new_password.strip() and new_club_name.strip():
+                    if add_user(new_username, new_password, club_name=new_club_name):
+                        st.success(f"حساب باشگاه ({new_club_name}) با مدیر ({new_username}) با موفقیت ایجاد شد.")
                     else:
                         st.error("خطا در ساخت حساب.")
+                else:
+                    st.warning("لطفاً تمامی فیلدها را پر کنید.")
