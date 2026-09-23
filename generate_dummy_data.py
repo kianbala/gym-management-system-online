@@ -12,8 +12,17 @@ LAST_NAMES = [
     'Sadeghi', 'Heidari', 'Mousavi', 'Najafi', 'Mozaffari', 'Sharifi', 'Farahani', 'Jafari', 'Akbari', 'Bagheri'
 ]
 
-def generate_dummy_data_for_club(club_id):
-    print(f"⏳ Adding 30 sample members and attendance history for club: {club_id} ...")
+def generate_dummy_data_for_manager(username):
+    # 1. Fetch manager record from 'users' table using the unique username
+    user_res = supabase.table("users").select("*").eq("username", username).execute()
+    if not user_res.data:
+        print(f"❌ Error: Manager with username '{username}' was not found in database!")
+        return
+
+    user_data = user_res.data[0]
+    club_id = user_data.get("club_id", username)
+
+    print(f"⏳ Adding 30 sample members and attendance history for manager: '{username}' (Club: '{club_id}') ...")
     now = datetime.now()
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
@@ -51,7 +60,7 @@ def generate_dummy_data_for_club(club_id):
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
 
-        # 1. Insert member into Supabase
+        # 2. Insert member into Supabase
         member_data = {
             "name": full_name,
             "phone": phone_number,
@@ -68,7 +77,7 @@ def generate_dummy_data_for_club(club_id):
 
         member_id = member_res.data[0]['id']
 
-        # 2. Insert last check-in
+        # 3. Insert last check-in
         hour = random.choice(all_hours)
         minute = random.randint(0, 59)
         last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
@@ -79,10 +88,9 @@ def generate_dummy_data_for_club(club_id):
             "club_id": club_id
         }]
 
-        # 3. Insert random past attendance records
+        # 4. Insert random past attendance records
         used_sessions = random.randint(2, 8)
         for _ in range(used_sessions):
-            # Prevent range error by ensuring valid min/max bounds
             min_past = last_checkin_days_ago + 1
             max_past = max(min_past, days_active)
             
@@ -100,12 +108,12 @@ def generate_dummy_data_for_club(club_id):
         supabase.table("attendance").insert(attendance_records).execute()
         added_count += 1
 
-    print(f"✅ Successfully created {added_count} sample members and attendance history for account '{club_id}' in Supabase!")
+    print(f"✅ Successfully created {added_count} sample members and attendance history for manager '{username}' (Club: '{club_id}') in Supabase!")
 
 if __name__ == "__main__":
-    # Enter the username of the account/club you want to create sample members for:
-    target_club = input("Enter the username of the account/club (e.g., kian): ").strip()
-    if target_club:
-        generate_dummy_data_for_club(target_club)
+    # Enter the manager's username (e.g., admin) to generate data for their specific club
+    target_username = input("Enter the manager's username (e.g., admin): ").strip()
+    if target_username:
+        generate_dummy_data_for_manager(target_username)
     else:
         print("❌ Username was not provided.")
