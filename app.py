@@ -33,13 +33,20 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# مدیریت نشست کاربر
+# --- مدیریت نشست کاربر و بازیابی از URL Query Parameters ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
     st.session_state.username = ""
 if 'club_id' not in st.session_state:
     st.session_state.club_id = ""
+
+# بازیابی نشست هنگام رفرش صفحه از طریق پارامترهای آدرس مرورگر
+query_params = st.query_params
+if not st.session_state.logged_in and "user" in query_params:
+    st.session_state.logged_in = True
+    st.session_state.username = query_params["user"]
+    st.session_state.club_id = query_params.get("club", query_params["user"])
 
 # --- فرم ورود و ثبت‌نام اولیه ---
 if not st.session_state.logged_in:
@@ -63,6 +70,11 @@ if not st.session_state.logged_in:
                             st.session_state.logged_in = True
                             st.session_state.username = username_input
                             st.session_state.club_id = club_id
+                            
+                            # 🔄 تنظیم پارامترهای آدرس مرورگر جهت حفظ نشست هنگام رفرش
+                            st.query_params["user"] = username_input
+                            st.query_params["club"] = club_id
+                            
                             st.success(f"خوش آمدید {username_input}!")
                             time.sleep(1)
                             st.rerun()
@@ -92,10 +104,13 @@ if not st.session_state.logged_in:
 else:
     st.sidebar.write(f"👤 **مدیر آنلاین:** {st.session_state.username}")
     st.sidebar.write(f"🏢 **باشگاه:** `{st.session_state.club_id}`")
+    
+    # 🚪 خروج از سیستم و پاک‌سازی URL
     if st.sidebar.button("🚪 خروج"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.club_id = ""
+        st.query_params.clear()  # پاک‌سازی کامل پارامترهای URL
         st.rerun()
 
     st.sidebar.markdown("---")
