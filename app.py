@@ -39,9 +39,9 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* تنظیم اندازه فونت متغییرها و تیترهای کارت‌های آماری */
+    /* تنظیم اندازه فونت متغیرها و تیترهای کارت‌های آماری */
     [data-testid="stMetricValue"] {
-        font-size: 1.15rem !important;
+        font-size: 1.1rem !important;
         font-weight: 700 !important;
         white-space: nowrap !important;
     }
@@ -54,7 +54,7 @@ st.markdown("""
         font-size: 0.72rem !important;
     }
 
-    /* تنظیم کارت‌های آماری بالا */
+    /* تنظیم کارت‌های آماری */
     div[data-testid="metric-container"] {
         background-color: #1a1f2c;
         border: 1px solid #2e3545;
@@ -65,12 +65,12 @@ st.markdown("""
 
     /* اصلاح اندازه عناوین و زیرعنوان‌ها */
     h1, h2, h3 {
-        font-size: 1.25rem !important;
+        font-size: 1.2rem !important;
         font-weight: 600 !important;
         margin-bottom: 0.5rem !important;
     }
     .stSubheader {
-        font-size: 1.1rem !important;
+        font-size: 1.05rem !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -515,14 +515,12 @@ else:
         total_members_count = len(raw_members) if raw_members else 1
         total_checkins = len(attendance_logs) if attendance_logs else (int(hourly_df['checkin_count'].sum()) if not hourly_df.empty else 0)
         
-        # محاسبه ساعت شلوغی با فرمت مرتب
         if not hourly_df.empty and 'checkin_count' in hourly_df.columns:
             peak_row = hourly_df.loc[hourly_df['checkin_count'].idxmax()]
             peak_hour_str = f"ساعت {int(peak_row['hour']):02d}:00"
         else:
             peak_hour_str = "نامشخص"
 
-        # دسته‌بندی ریسک اعضا
         high_risk_cnt = 0
         med_risk_cnt = 0
         low_risk_cnt = 0
@@ -546,7 +544,6 @@ else:
         med_pct = (med_risk_cnt / total_members_count) * 100 if total_members_count else 0
         low_pct = (low_risk_cnt / total_members_count) * 100 if total_members_count else 0
 
-        # ۵ کارت شاخص آماری با فونت‌های بهینه‌شده
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             st.metric("مجموع ترددها", f"{total_checkins} ورود")
@@ -611,22 +608,114 @@ else:
             st.caption("اطلاعات مستقیماً از نمای تحلیلی دیتابیس (vw_MemberChurnAnalytics) فراخوانی شده است.")
 
     # ---------------------------------------------------------
-    # بخش ۶: مدیریت و حذف
+    # بخش ۶: مدیریت و حذف (کامل بر اساس لوکال‌هاست)
     # ---------------------------------------------------------
     elif choice == "مدیریت و حذف":
-        st.subheader("🗑️ حذف کامل عضو")
-        members = get_all_members(club_id)
-        if members:
-            options = {f"کد: {m['id']} | {m['name']}": m['id'] for m in members}
-            selected_option = st.selectbox("عضو مورد نظر جهت حذف:", list(options.keys()))
-            
-            if st.button("❌ حذف عضو"):
-                if delete_member(options[selected_option], club_id):
-                    st.success("عضو با موفقیت حذف شد.")
+        raw_members = get_all_members(club_id)
+
+        # ۱. حذف دستی یک عضو مشخص
+        st.markdown("### 👤 حذف دستی یک عضو مشخص")
+        search_del = st.text_input(
+            "🔍 جستجوی عضو جهت حذف (بر اساس نام، شماره تماس یا کد ملی):",
+            key="search_del_input"
+        )
+
+        filtered_del_members = raw_members
+        if search_del.strip():
+            q = search_del.strip().lower()
+            filtered_del_members = [
+                m for m in raw_members
+                if q in str(m.get("name", "")).lower()
+                or q in str(m.get("phone", ""))
+                or q in str(m.get("national_id", ""))
+                or q in str(m.get("id", ""))
+            ]
+
+        if filtered_del_members:
+            del_options = {
+                f"کد: {m.get('id')} | {m.get('name')} | همراه: {m.get('phone')} | کد ملی: {m.get('national_id', 'نامشخص')}": m.get('id')
+                for m in filtered_del_members
+            }
+            selected_del_label = st.selectbox("عضو مورد نظر را برای حذف انتخاب کنید:", list(del_options.keys()))
+            selected_del_id = del_options[selected_del_label]
+
+            if st.button("❌ حذف کامل عضو", type="primary"):
+                if delete_member(selected_del_id, club_id):
+                    st.success("عضو مورد نظر با موفقیت حذف شد.")
                     time.sleep(1)
                     st.rerun()
                 else:
                     st.error("خطا در حذف عضو.")
+        else:
+            st.info("هیچ عضوی یافت نشد.")
+
+        st.markdown("---")
+
+        # ۲. حذف اشتراک‌های اضافی (بدون حذف عضو)
+        st.markdown("### 🗑️ حذف اشتراک‌های اضافی (بدون حذف عضو)")
+        search_sub = st.text_input(
+            "🔍 جستجوی عضو جهت مدیریت/حذف اشتراک (نام، شماره تماس یا کد ملی):",
+            key="search_sub_input"
+        )
+
+        filtered_sub_members = raw_members
+        if search_sub.strip():
+            q = search_sub.strip().lower()
+            filtered_sub_members = [
+                m for m in raw_members
+                if q in str(m.get("name", "")).lower()
+                or q in str(m.get("phone", ""))
+                or q in str(m.get("national_id", ""))
+                or q in str(m.get("id", ""))
+            ]
+
+        if filtered_sub_members:
+            sub_member_options = {
+                f"کد: {m.get('id')} | {m.get('name')} | همراه: {m.get('phone')}": m
+                for m in filtered_sub_members
+            }
+            selected_sub_label = st.selectbox("عضو مورد نظر را انتخاب کنید:", list(sub_member_options.keys()))
+            selected_sub_member = sub_member_options[selected_sub_label]
+            m_id = selected_sub_member.get('id')
+            sub_days = selected_sub_member.get('subscription_days', 0) or 0
+
+            if sub_days > 0:
+                package_desc = f"کد اشتراک: {m_id} | پکیج: {sub_days} جلسه باقیمانده"
+                st.selectbox("اشتراکی که قصد حذف آن را دارید انتخاب کنید:", [package_desc])
+
+                if st.button("❌ حذف این اشتراک"):
+                    try:
+                        supabase.table("members").update({"subscription_days": 0, "status": "expired"}).eq("id", m_id).eq("club_id", club_id).execute()
+                        st.success("اشتراک عضو با موفقیت صفر گردید.")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"خطا در صفر کردن اشتراک: {e}")
+            else:
+                st.info("این عضو در حال حاضر اشتراک فعالی ندارد.")
+        else:
+            st.info("عضوی یافت نشد.")
+
+        st.markdown("---")
+
+        # ۳. ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)
+        st.markdown("### ⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
+        st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
+
+        confirm_text = st.text_input("برای تایید، عبارت 'RESET' را به انگلیسی وارد کنید:")
+
+        if st.button("💥 ریست کلی دیتابیس باشگاه", type="primary"):
+            if confirm_text.strip() == "RESET":
+                try:
+                    supabase.table("attendance").delete().eq("club_id", club_id).execute()
+                    supabase.table("members").delete().eq("club_id", club_id).execute()
+                    st.success("تمامی داده‌ها و اعضای این باشگاه با موفقیت حذف و ریست گردید.")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"خطا در ریست دیتابیس: {e}")
+            else:
+                st.warning("جهت تایید نهایی لطفاً کلمه RESET را به درستی وارد کنید.")
 
     # ---------------------------------------------------------
     # بخش ۷: ایجاد حساب جدید
