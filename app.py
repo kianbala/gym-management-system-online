@@ -1,19 +1,24 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta
 import time
+
 from db_manager import (
     add_member, 
     get_all_members, 
     search_member, 
     update_subscription, 
     delete_member, 
-    record_attendance
+    record_attendance,
+    get_attendance_logs,
+    supabase
 )
 from ai_analytics import get_hourly_occupancy, predict_churn_risk
 from auth import authenticate_user, add_user
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
+# استایل‌دهی سفارشی راست‌به‌چپ
 st.markdown("""
     <style>
     html, body, [class*="css"] {
@@ -28,10 +33,13 @@ st.markdown("""
     div[data-testid="InputInstructions"] {
         display: none !important;
     }
+    .stDataFrame {
+        direction: rtl !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# مدیریت نشست کاربر
+# مدیریت نشست کاربر (Session State)
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
@@ -45,7 +53,9 @@ if not st.session_state.logged_in and "user" in query_params:
     st.session_state.username = query_params["user"]
     st.session_state.club_id = query_params.get("club", query_params["user"])
 
-# صفحه ورود و ثبت‌نام اولیه
+# -------------------------------------------------------------
+# ۱. صفحه ورود و ثبت‌نام
+# -------------------------------------------------------------
 if not st.session_state.logged_in:
     st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -93,6 +103,9 @@ if not st.session_state.logged_in:
                     else:
                         st.warning("لطفاً تمامی فیلدها را پر کنید.")
 
+# -------------------------------------------------------------
+# ۲. پنل اصلی باشگاه (پس از ورود)
+# -------------------------------------------------------------
 else:
     st.sidebar.write(f"👤 **مدیر آنلاین:** {st.session_state.username}")
     st.sidebar.write(f"🏢 **باشگاه:** `{st.session_state.club_id}`")
@@ -119,33 +132,127 @@ else:
     choice = st.sidebar.selectbox("منوی اصلی", menu)
     club_id = st.session_state.club_id
 
-    # ۱. مشاهده اعضا
+    # ---------------------------------------------------------
+    # بخش ۱: داشبورد و لیست اعضا و وضعیت اشتراک‌ها
+    # ---------------------------------------------------------
     if choice == "داشبورد و اعضا":
-        st.subheader(f"📋 لیست اعضای ثبت‌شده در باشگاه {st.session_state.club_id}")
-        search_query = st.text_input("🔍 جستجوی عضو (نام یا کد ملی):")
+        st.subheader("📑 لیست اعضا و وضعیت اشتراک‌ها")
         
-        members = search_member(search_query, club_id) if search_query.strip() else get_all_members(club_id)
+        raw_members = get_all_members(club_id)
+        attendance_logs = get_attendance_logs(club_id)
         
-        if members:
-            df = pd.DataFrame(members)
-            df_display = df.rename(columns={
-                'id': 'شناسه',
-                'name': 'نام و نام خانوادگی',
-                'phone': 'شماره تماس',
-                'national_id': 'کد ملی',
-                'join_date': 'تاریخ عضویت',
-                'subscription_days': 'روزهای اعتبار',
-                'status': 'وضعیت'
-            })
-            if 'club_id' in df_display.columns:
-                df_display = df_display.drop(columns=['club_id'])
-            if 'created_at' in df_display.columns:
-                df_display = df_display.drop(columns=['created_at'])
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
-        else:
-            st.info("هیچ عضوی برای این باشگاه یافت نشد.")
+        last_checkin_map = {}
+        for log in attendance_logs:
+            m_id = log.get('member_id')
+            check_time_str = log.get('check_in_time')
+            if m_id and check_time_str and m_id not in last_checkin_map:
+                try:
+                    dt = datetime.fromisoformat(check_time_str.replace('Z', '+00:00'))
+                    last_checkin_map[m_id] = dt.date()
+                except Exception:
+                    pass
 
-    # ۲. ثبت عضو جدید
+        now_date = datetime.now().date()
+        processed_data = []
+
+        for m in raw_members:
+            m_id = m.get("id")
+            name = m.get("name", "")
+            national_id = m.get("national_id", "")
+            phone = m.get("phone", "")
+            sub_days = m.get("subscription_days", 0) or 0
+            raw_status = (m.get("status") or "active").upper()
+            
+            join_date_str = m.get("join_date")
+            if join_date_str:
+                try:
+                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    expire_dt = join_dt + timedelta(days=sub_days)
+                    expire_str = expire_dt.isoformat()
+                except Exception:
+                    expire_str = "نامشخص"
+            else:
+                expire_str = "نامشخص"
+
+            if m_id in last_checkin_map:
+                days_absent = (now_date - last_checkin_map[m_id]).days
+            elif join_date_str:
+                try:
+                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    days_absent = (now_date - join_dt).days
+                except Exception:
+                    days_absent = 0
+            else:
+                days_absent = 0
+
+            if sub_days >= 20:
+                package_type = "بسته ۲۴ جلسه ماهانه"
+            else:
+                package_type = "بسته ۱۲ جلسه ماهانه"
+
+            if sub_days <= 0 or raw_status == "EXPIRED":
+                status_str = "EXPIRED"
+            else:
+                status_str = "ACTIVE"
+
+            processed_data.append({
+                "کد عضویت": m_id,
+                "نام و نام خانوادگی": name,
+                "کد ملی": national_id,
+                "شماره تماس": phone,
+                "نوع بسته": package_type,
+                "کد اشتراک": m_id,
+                "جلسات باقی‌مانده": sub_days,
+                "تاریخ انقضا": expire_str,
+                "وضعیت": status_str,
+                "روزهای غیبت": max(0, days_absent)
+            })
+
+        col_filter, col_search = st.columns([1, 2])
+        
+        with col_filter:
+            status_filter = st.selectbox(
+                "فیلتر وضعیت اشتراک:",
+                ["همه", "ACTIVE", "EXPIRED"]
+            )
+
+        with col_search:
+            search_query = st.text_input(
+                "🔍 جستجوی عضو (نام، شماره، کد ملی یا کد عضویت):",
+                placeholder="مثلاً: علی، 0912 یا کد عضویت..."
+            )
+
+        filtered_list = processed_data
+        if status_filter != "همه":
+            filtered_list = [item for item in filtered_list if item["وضعیت"] == status_filter]
+
+        if search_query.strip():
+            q = search_query.strip().lower()
+            filtered_list = [
+                item for item in filtered_list
+                if q in str(item["نام و نام خانوادگی"]).lower()
+                or q in str(item["کد ملی"])
+                or q in str(item["شماره تماس"])
+                or q in str(item["کد عضویت"])
+            ]
+
+        st.write(f"📊 **تعداد اعضای یافت شده:** {len(filtered_list)} نفر")
+
+        if filtered_list:
+            df = pd.DataFrame(filtered_list)
+            column_order = [
+                "کد عضویت", "نام و نام خانوادگی", "کد ملی", "شماره تماس",
+                "نوع بسته", "کد اشتراک", "جلسات باقی‌مانده", "تاریخ انقضا",
+                "وضعیت", "روزهای غیبت"
+            ]
+            df = df[column_order]
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
+
+    # ---------------------------------------------------------
+    # بخش ۲: ثبت عضو جدید
+    # ---------------------------------------------------------
     elif choice == "ثبت عضو جدید":
         st.subheader("➕ ثبت عضو جدید")
         with st.form("add_member_form", clear_on_submit=True):
@@ -181,32 +288,78 @@ else:
                     else:
                         st.error(message)
 
-    # ۳. ثبت تردد
+    # ---------------------------------------------------------
+    # بخش ۳: ثبت تردد و کسر جلسه
+    # ---------------------------------------------------------
     elif choice == "ثبت تردد":
-        st.subheader("🚪 ثبت ورود ورزشکار")
-        members = get_all_members(club_id)
-        if members:
-            options = {f"👤 {m['name']} | 📱 {m['phone']} (اعتبار: {m['subscription_days']} روز)": m['id'] for m in members}
-            selected_label = st.selectbox("انتخاب عضو:", list(options.keys()))
+        st.subheader("🚪 ثبت ورود ورزشکار و کسر جلسه")
+        
+        raw_members = get_all_members(club_id)
+        
+        # فقط اعضای فعال (Active) که جلسه/روز باقیمانده دارند
+        active_members = [
+            m for m in raw_members 
+            if (m.get("subscription_days", 0) or 0) > 0 and (m.get("status") or "active").lower() != "expired"
+        ]
+        
+        # ۱. کادر جستجو
+        search_query = st.text_input(
+            "🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):",
+            placeholder="مثلاً: علی، 0912 یا کد عضویت..."
+        )
+        
+        # اعمال فیلتر جستجو
+        filtered_members = active_members
+        if search_query.strip():
+            q = search_query.strip().lower()
+            filtered_members = [
+                m for m in active_members
+                if q in str(m.get("name", "")).lower()
+                or q in str(m.get("phone", ""))
+                or q in str(m.get("national_id", ""))
+                or q in str(m.get("id", ""))
+            ]
+            
+        # ۲. نمایش تعداد موارد یافت‌شده بر اساس اعضای فعال
+        st.write(f"🔍 **تعداد {len(filtered_members)} مورد یافت شد:**")
+        
+        if filtered_members:
+            options = {
+                f"👤 {m.get('name', '')} | 📱 {m.get('phone', '')} | 🔢 باقیمانده: {m.get('subscription_days', 0)} جلسه (کد عضویت: {m.get('id')})": m.get('id')
+                for m in filtered_members
+            }
+            
+            selected_label = st.selectbox("لیست افراد یافت‌شده:", list(options.keys()))
             member_id = options[selected_label]
             
             if st.button("🟢 ثبت ورود", type="primary"):
                 if record_attendance(member_id, club_id):
-                    st.success("ورود با موفقیت ثبت شد.")
+                    current_sub = next((m.get("subscription_days", 0) for m in filtered_members if m.get("id") == member_id), 0)
+                    new_sub = max(0, current_sub - 1)
+                    
+                    try:
+                        supabase.table("members").update({"subscription_days": new_sub}).eq("id", member_id).execute()
+                        st.success(f"ورود با موفقیت ثبت شد. (جلسات باقیمانده: {new_sub})")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.success("ورود ثبت شد اما در کسر جلسه خطایی رخ داد.")
                 else:
                     st.error("خطا در ثبت ورود.")
         else:
-            st.warning("هیچ عضوی برای این باشگاه یافت نشد.")
+            st.info("هیچ ورزشکار فعالی با این مشخصات یافت نشد.")
 
-    # ۴. تمدید اشتراک
+    # ---------------------------------------------------------
+    # بخش ۴: تمدید اشتراک
+    # ---------------------------------------------------------
     elif choice == "تمدید اشتراک":
         st.subheader("💳 تمدید اعتبار اشتراک")
         members = get_all_members(club_id)
         if members:
-            options = {f"👤 {m['name']} | اعتبار فعلی: {m['subscription_days']} روز": m['id'] for m in members}
+            options = {f"👤 {m['name']} | اعتبار فعلی: {m['subscription_days']} جلسه/روز": m['id'] for m in members}
             selected_label = st.selectbox("انتخاب عضو جهت تمدید:", list(options.keys()))
             member_id = options[selected_label]
-            add_days = st.number_input("تعداد روزهای افزایشی", min_value=1, value=30)
+            add_days = st.number_input("تعداد جلسات/روزهای افزایشی", min_value=1, value=30)
             
             if st.button("🔄 افزایش اعتبار", type="primary"):
                 if update_subscription(member_id, add_days, club_id):
@@ -216,7 +369,9 @@ else:
                 else:
                     st.error("خطا در به‌روزرسانی اعتبار.")
 
-    # ۵. تحلیل هوش مصنوعی
+    # ---------------------------------------------------------
+    # بخش ۵: تحلیل هوش مصنوعی
+    # ---------------------------------------------------------
     elif choice == "📊 تحلیل هوش مصنوعی":
         st.subheader("🤖 تحلیل رفتاری و شلوغی باشگاه")
         hourly_df = get_hourly_occupancy(club_id)
@@ -242,7 +397,9 @@ else:
             else:
                 st.success("هیچ عضوی در وضعیت ریسک ریزش قرار ندارد.")
 
-    # ۶. مدیریت و حذف
+    # ---------------------------------------------------------
+    # بخش ۶: مدیریت و حذف
+    # ---------------------------------------------------------
     elif choice == "مدیریت و حذف":
         st.subheader("🗑️ حذف کامل عضو")
         members = get_all_members(club_id)
@@ -258,7 +415,9 @@ else:
                 else:
                     st.error("خطا در حذف عضو.")
 
-    # ۷. تعریف کاربر/باشگاه جدید
+    # ---------------------------------------------------------
+    # بخش ۷: ایجاد حساب جدید
+    # ---------------------------------------------------------
     elif choice == "⚙️ ساخت باشگاه/مدیر جدید":
         st.subheader("👤 ساخت حساب باشگاه جدید")
         with st.form("new_user_form", clear_on_submit=True):
