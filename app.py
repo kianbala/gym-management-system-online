@@ -607,8 +607,8 @@ else:
 
             st.caption("اطلاعات مستقیماً از نمای تحلیلی دیتابیس (vw_MemberChurnAnalytics) فراخوانی شده است.")
 
-# ---------------------------------------------------------
-    # بخش ۶: مدیریت و حذف (همراه با تایمر ۳ ثانیه‌ای و دکمه لغو)
+    # ---------------------------------------------------------
+    # بخش ۶: مدیریت و حذف (همراه با تایمر ۳ ثانیه‌ای غیربلاک‌کننده و دکمه لغو)
     # ---------------------------------------------------------
     elif choice == "مدیریت و حذف":
         raw_members = get_all_members(club_id)
@@ -698,13 +698,12 @@ else:
 
         st.markdown("---")
 
-        # ۳. ریست کامل دیتابیس (با تایمر معکوس ۳ ثانیه‌ای و دکمه لغو)
+        # ۳. ریست کامل دیتابیس (با تایمر معکوس ۳ ثانیه‌ای واقعی و دکمه لغو فعال)
         st.markdown("### ⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
         st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
 
         confirm_text = st.text_input("برای تایید، عبارت 'RESET' را به انگلیسی وارد کنید:")
 
-        # مدیریت حالت‌های شروع تایمر و کنسل
         if 'reset_pending' not in st.session_state:
             st.session_state.reset_pending = False
 
@@ -714,40 +713,43 @@ else:
             if st.button("💥 ریست کلی دیتابیس باشگاه", type="primary"):
                 if confirm_text.strip() == "RESET":
                     st.session_state.reset_pending = True
+                    st.session_state.reset_start_time = time.time()
+                    st.rerun()
                 else:
                     st.warning("جهت تایید نهایی لطفاً کلمه RESET را به درستی وارد کنید.")
 
         with col_btn2:
             if st.session_state.reset_pending:
-                if st.button("🛑 لغو عملیات ریست"):
+                if st.button("🛑 لغو عملیات ریست", type="secondary"):
                     st.session_state.reset_pending = False
+                    st.session_state.pop('reset_start_time', None)
                     st.info("عملیات ریست دیتابیس لغو شد.")
                     time.sleep(1)
                     st.rerun()
 
-        # اجرای شمارش معکوس ۳ ثانیه‌ای
+        # اجرای منطق تایمر معکوس بر پایه زمان واقعی
         if st.session_state.reset_pending:
-            countdown_placeholder = st.empty()
-            
-            for i in range(3, 0, -1):
-                # بررسی اینکه آیا کاربر در طول تایمر روی دکمه لغو کلیک کرده یا خیر
-                if not st.session_state.reset_pending:
-                    break
-                countdown_placeholder.warning(f"⏳ پاکسازی کامل دیتابیس تا {i} ثانیه دیگر... (برای انصراف روی دکمه «لغو عملیات» کلیک کنید)")
-                time.sleep(1)
+            elapsed = time.time() - st.session_state.get('reset_start_time', time.time())
+            remaining = 3 - int(elapsed)
 
-            # اگر لغو نشده بود، پاکسازی انجام می‌شود
-            if st.session_state.reset_pending:
+            if remaining > 0:
+                st.warning(f"⏳ پاکسازی کامل دیتابیس تا {remaining} ثانیه دیگر... (برای انصراف روی دکمه «لغو عملیات» کلیک کنید)")
+                time.sleep(0.5)
+                st.rerun()
+            else:
                 try:
                     supabase.table("attendance").delete().eq("club_id", club_id).execute()
                     supabase.table("members").delete().eq("club_id", club_id).execute()
                     st.session_state.reset_pending = False
+                    st.session_state.pop('reset_start_time', None)
                     st.success("تمامی داده‌ها و اعضای این باشگاه با موفقیت حذف و ریست گردید.")
                     time.sleep(1.5)
                     st.rerun()
                 except Exception as e:
                     st.session_state.reset_pending = False
+                    st.session_state.pop('reset_start_time', None)
                     st.error(f"خطا در ریست دیتابیس: {e}")
+
     # ---------------------------------------------------------
     # بخش ۷: ایجاد حساب جدید
     # ---------------------------------------------------------
