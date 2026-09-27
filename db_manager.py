@@ -1,185 +1,453 @@
-import os
-from datetime import datetime
+import pyodbc
 import pandas as pd
-import streamlit as st
-from dotenv import load_dotenv
-from supabase import create_client, Client
+import sys
+from datetime import datetime, date
 
-load_dotenv()
-
-SUPABASE_URL = None
-SUPABASE_KEY = None
-
-try:
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL")
-    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
-except Exception:
-    pass
-
-if not SUPABASE_URL:
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-if not SUPABASE_KEY:
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# --- ۱. مدیریت اعضا ---
-def add_member(name, phone, national_id, subscription_days, sessions_left, club_id):
-    """ثبت عضو جدید همراه با روزها و تعداد جلسات اولیه"""
+if sys.stdout.encoding.lower() != 'utf-8':
     try:
-        data = {
-            "name": name.strip(),
-            "phone": phone.strip(),
-            "national_id": national_id.strip(),
-            "subscription_days": int(subscription_days),
-            "sessions_left": int(sessions_left),
-            "status": "active",
-            "join_date": datetime.now().date().isoformat(),
-            "club_id": club_id
-        }
-        res = supabase.table("members").insert(data).execute()
-        return bool(res.data)
-    except Exception as e:
-        st.error(f"خطا در ثبت عضو: {e}")
-        return False
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 
-def get_all_members(club_id):
-    """دریافت لیست اعضای یک باشگاه"""
-    try:
-        res = supabase.table("members").select("*").eq("club_id", club_id).order("id", desc=True).execute()
-        return res.data if res.data else []
-    except Exception as e:
-        st.error(f"خطا در دریافت لیست اعضا: {e}")
-        return []
+SERVER_NAME = r'.\SQLSERVER2022'
+DATABASE_NAME = 'GymManagementDB'
+USERNAME = 'sa'
+PASSWORD = '123456'
 
-def search_member(search_query, club_id):
-    """جستجوی عضو بر اساس نام یا کد ملی"""
-    try:
-        res = supabase.table("members").select("*").eq("club_id", club_id).execute()
-        data = res.data if res.data else []
-        query = search_query.strip().lower()
-        return [
-            m for m in data 
-            if query in m.get("name", "").lower() or query in m.get("national_id", "")
-        ]
-    except Exception as e:
-        st.error(f"خطا در جستجو: {e}")
-        return []
+CONN_STR = (
+    f"DRIVER={{SQL Server}};"
+    f"SERVER={SERVER_NAME};"
+    f"DATABASE={DATABASE_NAME};"
+    f"UID={USERNAME};"
+    f"PWD={PASSWORD};"
+)
 
-def delete_member(member_id, club_id):
-    """حذف عضو و سوابق تردد"""
-    try:
-        supabase.table("attendance").delete().eq("member_id", member_id).eq("club_id", club_id).execute()
-        res = supabase.table("members").delete().eq("id", member_id).eq("club_id", club_id).execute()
-        return bool(res.data)
-    except Exception as e:
-        st.error(f"خطا در حذف عضو: {e}")
-        return False
+def get_connection():
+    return pyodbc.connect(CONN_STR)
 
-# --- ۲. مدیریت بسته‌ها ---
-def add_package(title, sessions, duration_days, price, club_id):
-    """ثبت تعریف بسته جدید"""
-    try:
-        data = {
-            "title": title.strip(),
-            "sessions": int(sessions),
-            "duration_days": int(duration_days),
-            "price": float(price),
-            "club_id": club_id
-        }
-        res = supabase.table("packages").insert(data).execute()
-        return bool(res.data)
-    except Exception as e:
-        st.error(f"خطا در ایجاد بسته: {e}")
-        return False
-
-def get_all_packages(club_id):
-    """دریافت بسته‌های فعال باشگاه"""
-    try:
-        res = supabase.table("packages").select("*").eq("club_id", club_id).execute()
-        return res.data if res.data else []
-    except Exception as e:
-        st.error(f"خطا در دریافت بسته‌ها: {e}")
-        return []
-
-def assign_package_to_member(member_id, package_id, club_id):
-    """تخصیص بسته به عضو (افزایش جلسات و روزهای اعتبار)"""
-    try:
-        pkg_res = supabase.table("packages").select("*").eq("id", package_id).eq("club_id", club_id).execute()
-        mem_res = supabase.table("members").select("*").eq("id", member_id).eq("club_id", club_id).execute()
+def search_members_for_checkin(search_term=""):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Subscriptions 
+        SET status = 'EXPIRED' 
+        WHERE end_date < CAST(GETDATE() AS DATE) AND status = 'ACTIVE'
+    """)
+    conn.commit()
+    
+    query = """
+        SELECT 
+            m.member_id,
+            s.subscription_id, 
+            m.full_name, 
+            m.phone_number, 
+            m.national_id, 
+            s.remaining_sessions, 
+            s.end_date
+        FROM Subscriptions s
+        JOIN Members m ON s.member_id = m.member_id
+        WHERE s.status = 'ACTIVE' AND s.remaining_sessions > 0
+    """
+    
+    if search_term and search_term.strip():
+        query += " AND (m.full_name LIKE ? OR m.phone_number LIKE ? OR m.national_id LIKE ?)"
+        term = f"%{search_term.strip()}%"
+        cursor.execute(query, (term, term, term))
+    else:
+        cursor.execute(query)
         
-        if not pkg_res.data or not mem_res.data:
-            return False
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = []
+    for r in rows:
+        result.append({
+            'member_id': r[0],
+            'subscription_id': r[1],
+            'full_name': r[2],
+            'phone_number': r[3],
+            'national_id': r[4],
+            'remaining_sessions': r[5],
+            'end_date': r[6]
+        })
+    return result
+
+def add_member(first_name, last_name, national_id, phone_number):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT national_id, phone_number 
+        FROM Members 
+        WHERE national_id = ? OR phone_number = ?
+    """, (national_id, phone_number))
+    
+    existing_member = cursor.fetchone()
+    
+    if existing_member:
+        conn.close()
+        if existing_member[0] == national_id:
+            return False, "خطا: عضوی با این کد ملی قبلاً ثبت شده است!"
+        else:
+            return False, "خطا: عضوی با این شماره تماس قبلاً ثبت شده است!"
             
-        pkg = pkg_res.data[0]
-        mem = mem_res.data[0]
-
-        new_days = mem.get("subscription_days", 0) + pkg["duration_days"]
-        new_sessions = mem.get("sessions_left", 0) + pkg["sessions"]
-
-        update_res = supabase.table("members").update({
-            "subscription_days": new_days,
-            "sessions_left": new_sessions,
-            "status": "active"
-        }).eq("id", member_id).eq("club_id", club_id).execute()
-
-        return bool(update_res.data)
-    except Exception as e:
-        st.error(f"خطا در تخصیص بسته: {e}")
-        return False
-
-# --- ۳. مدیریت تردد ---
-def record_attendance(member_id, club_id):
-    """ثبت ورود و کسر یک جلسه از حساب عضو"""
     try:
-        mem_res = supabase.table("members").select("sessions_left").eq("id", member_id).eq("club_id", club_id).execute()
-        if not mem_res.data:
-            return False, "عضو یافت نشد."
-
-        sessions = mem_res.data[0].get("sessions_left", 0)
-        if sessions <= 0:
-            return False, "تعداد جلسات عضو به پایان رسیده است!"
-
-        # کسر جلسه
-        supabase.table("members").update({"sessions_left": sessions - 1}).eq("id", member_id).eq("club_id", club_id).execute()
-        
-        # ثبت ورود
-        data = {
-            "member_id": member_id,
-            "check_in_time": datetime.now().isoformat(),
-            "club_id": club_id
-        }
-        res = supabase.table("attendance").insert(data).execute()
-        return True, "ورود با موفقیت ثبت شد و ۱ جلسه کسر گردید."
+        cursor.execute(
+            "INSERT INTO Members (first_name, last_name, national_id, phone_number) VALUES (?, ?, ?, ?)", 
+            (first_name, last_name, national_id, phone_number)
+        )
+        conn.commit()
+        conn.close()
+        return True, f"عضو جدید '{first_name} {last_name}' با موفقیت ثبت شد."
     except Exception as e:
-        return False, f"خطا در ثبت تردد: {e}"
+        conn.close()
+        return False, f"خطا در ثبت عضو: {e}"
 
-def update_subscription(member_id, add_days, club_id):
-    """افزایش تعداد روزهای اعتبار اشتراک عضو"""
+def delete_member(member_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT member_id FROM Members WHERE member_id = ?", (member_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return False, f"خطا: عضوی با کد عضویت {member_id} یافت نشد!"
+
     try:
-        res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
-        if not res.data:
-            return False
+        cursor.execute("SELECT subscription_id FROM Subscriptions WHERE member_id = ?", (member_id,))
+        subs = cursor.fetchall()
+        sub_ids = [s[0] for s in subs]
         
-        current_days = res.data[0].get("subscription_days", 0) or 0
-        new_days = current_days + int(add_days)
-
-        update_res = supabase.table("members").update({
-            "subscription_days": new_days,
-            "status": "active"
-        }).eq("id", member_id).eq("club_id", club_id).execute()
+        for s_id in sub_ids:
+            cursor.execute("DELETE FROM CheckIns WHERE subscription_id = ?", (s_id,))
+            
+        cursor.execute("DELETE FROM AI_Analytics WHERE member_id = ?", (member_id,))
+        cursor.execute("DELETE FROM Subscriptions WHERE member_id = ?", (member_id,))
+        cursor.execute("DELETE FROM Members WHERE member_id = ?", (member_id,))
         
-        return bool(update_res.data)
+        conn.commit()
+        conn.close()
+        return True, f"عضو شماره {member_id} و تمامی سوابق مربوطه با موفقیت حذف شدند."
     except Exception as e:
-        st.error(f"خطا در تمدید اشتراک: {e}")
-        return False
+        conn.close()
+        return False, f"خطا در حذف عضو: {e}"
 
+def assign_package(member_id, package_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT member_id FROM Members WHERE member_id = ?", (member_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return False, f"خطا: عضوی با کد {member_id} وجود ندارد!"
 
-def get_attendance_logs(club_id):
-    """دریافت سوابق تردد اعضای باشگاه"""
-    try:
-        res = supabase.table("attendance").select("*, members(name, phone)").eq("club_id", club_id).order("check_in_time", desc=True).execute()
-        return res.data if res.data else []
-    except Exception as e:
-        st.error(f"خطا در دریافت سوابق تردد: {e}")
-        return []
+    cursor.execute("""
+        SELECT TOP 1 subscription_id, remaining_sessions, end_date 
+        FROM Subscriptions 
+        WHERE member_id = ? AND status = 'ACTIVE'
+        ORDER BY subscription_id DESC
+    """, (member_id,))
+    active_sub = cursor.fetchone()
+    
+    today = date.today()
+    
+    if active_sub:
+        sub_id, remaining_sessions, end_date = active_sub
+        
+        if isinstance(end_date, str):
+            try:
+                end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            except ValueError:
+                end_date = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S").date()
+        elif isinstance(end_date, datetime):
+            end_date = end_date.date()
+            
+        if remaining_sessions > 0 and (end_date and end_date >= today):
+            conn.close()
+            return False, f"این کاربر هنوز {remaining_sessions} جلسه فعال دارد و تاریخ اشتراکش تمام نشده است!"
+        else:
+            cursor.execute("UPDATE Subscriptions SET status = 'EXPIRED' WHERE member_id = ? AND status = 'ACTIVE'", (member_id,))
+    
+    cursor.execute("SELECT total_sessions, validity_days FROM Packages WHERE package_id = ?", (package_id,))
+    pkg = cursor.fetchone()
+    
+    if pkg:
+        total_sessions, validity_days = pkg
+        query = """
+            INSERT INTO Subscriptions (member_id, package_id, remaining_sessions, start_date, end_date, status)
+            VALUES (?, ?, ?, CAST(GETDATE() AS DATE), DATEADD(day, ?, CAST(GETDATE() AS DATE)), N'ACTIVE')
+        """
+        cursor.execute(query, (member_id, package_id, total_sessions, validity_days))
+        conn.commit()
+        conn.close()
+        return True, "اشتراک جدید با موفقیت فعال شد."
+    else:
+        conn.close()
+        return False, "بسته مورد نظر یافت نشد."
+
+def record_checkin(member_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        UPDATE Subscriptions 
+        SET status = 'EXPIRED' 
+        WHERE end_date < CAST(GETDATE() AS DATE) AND status = 'ACTIVE'
+    """)
+    conn.commit()
+
+    cursor.execute("""
+        SELECT TOP 1 subscription_id, remaining_sessions 
+        FROM Subscriptions 
+        WHERE member_id = ? AND status = 'ACTIVE' AND remaining_sessions > 0
+        ORDER BY subscription_id DESC
+    """, (member_id,))
+    
+    active_sub = cursor.fetchone()
+    
+    if not active_sub:
+        conn.close()
+        return False, "❌ کاربر اشتراک فعال یا جلسه باقی‌مانده ندارد!"
+    
+    sub_id, remaining_sessions = active_sub
+    
+    cursor.execute("""
+        INSERT INTO CheckIns (member_id, subscription_id, checkin_time)
+        VALUES (?, ?, GETDATE())
+    """, (member_id, sub_id))
+    
+    new_remaining = remaining_sessions - 1
+    
+    if new_remaining == 0:
+        cursor.execute("""
+            UPDATE Subscriptions 
+            SET remaining_sessions = ?, status = 'EXPIRED' 
+            WHERE subscription_id = ?
+        """, (new_remaining, sub_id))
+    else:
+        cursor.execute("""
+            UPDATE Subscriptions 
+            SET remaining_sessions = ? 
+            WHERE subscription_id = ?
+        """, (new_remaining, sub_id))
+        
+    conn.commit()
+    conn.close()
+    return True, f"✅ ورود ثبت شد. جلسات باقی‌مانده: {new_remaining} جلسه"
+
+def get_active_members():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Subscriptions 
+        SET status = 'EXPIRED' 
+        WHERE end_date < CAST(GETDATE() AS DATE) AND status = 'ACTIVE'
+    """)
+    conn.commit()
+    
+    query = """
+        SELECT m.member_id, m.full_name, m.national_id, m.phone_number, s.subscription_id, s.remaining_sessions, s.end_date, s.status
+        FROM Members m
+        LEFT JOIN Subscriptions s ON m.member_id = s.member_id
+    """
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
+
+def delete_subscription(subscription_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT subscription_id FROM Subscriptions WHERE subscription_id = ?", (subscription_id,))
+    if not cursor.fetchone():
+        conn.close()
+        return False, "اشتراک مورد نظر یافت نشد."
+
+    cursor.execute("DELETE FROM CheckIns WHERE subscription_id = ?", (subscription_id,))
+    cursor.execute("DELETE FROM Subscriptions WHERE subscription_id = ?", (subscription_id,))
+    conn.commit()
+    conn.close()
+    return True, f"اشتراک شماره {subscription_id} با موفقیت حذف شد."
+
+def get_all_packages():
+    conn = get_connection()
+    query = "SELECT * FROM Packages"
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
+
+def reset_all_data():
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM CheckIns;")
+    cursor.execute("DELETE FROM AI_Analytics;")
+    cursor.execute("DELETE FROM Subscriptions;")
+    cursor.execute("DELETE FROM Members;")
+    
+    cursor.execute("DBCC CHECKIDENT ('CheckIns', RESEED, 0);")
+    cursor.execute("DBCC CHECKIDENT ('AI_Analytics', RESEED, 0);")
+    cursor.execute("DBCC CHECKIDENT ('Subscriptions', RESEED, 0);")
+    cursor.execute("DBCC CHECKIDENT ('Members', RESEED, 0);")
+    
+    conn.commit()
+    conn.close()
+    return True
+
+def search_all_members(search_term=""):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE Subscriptions 
+        SET status = 'EXPIRED' 
+        WHERE end_date < CAST(GETDATE() AS DATE) AND status = 'ACTIVE'
+    """)
+    conn.commit()
+    
+    query = """
+        SELECT 
+            m.member_id, 
+            m.full_name, 
+            m.phone_number, 
+            m.national_id,
+            s.remaining_sessions,
+            s.end_date,
+            s.status
+        FROM Members m
+        LEFT JOIN (
+            SELECT member_id, remaining_sessions, end_date, status,
+                   ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
+            FROM Subscriptions
+        ) s ON m.member_id = s.member_id AND s.rn = 1
+    """
+    
+    if search_term and search_term.strip():
+        query += " WHERE (m.full_name LIKE ? OR m.phone_number LIKE ? OR m.national_id LIKE ?)"
+        term = f"%{search_term.strip()}%"
+        cursor.execute(query, (term, term, term))
+    else:
+        cursor.execute(query)
+        
+    rows = cursor.fetchall()
+    conn.close()
+    
+    today = date.today()
+    result = []
+    
+    for r in rows:
+        member_id, full_name, phone, national_id, rem_sessions, end_date, status = r
+        is_expired = False
+        if end_date:
+            if isinstance(end_date, str):
+                try:
+                    end_date_val = datetime.strptime(end_date, "%Y-%m-%d").date()
+                except ValueError:
+                    end_date_val = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S").date()
+            elif isinstance(end_date, datetime):
+                end_date_val = end_date.date()
+            else:
+                end_date_val = end_date
+                
+            if end_date_val < today:
+                is_expired = True
+
+        if status == 'ACTIVE' and rem_sessions is not None and rem_sessions > 0 and not is_expired:
+            can_assign = False
+            status_text = f"🔴 دارای اشتراک فعال ({rem_sessions} جلسه باقی‌مانده)"
+        else:
+            can_assign = True
+            if status is None:
+                status_text = "🟢 مجاز به ثبت بسته (بدون اشتراک)"
+            elif rem_sessions == 0:
+                status_text = "🟢 مجاز به تمدید (اتمام جلسات)"
+            else:
+                status_text = "🟢 مجاز به تمدید (اشتراک منقضی شده)"
+
+        result.append({
+            'member_id': member_id,
+            'full_name': full_name,
+            'phone_number': phone,
+            'national_id': national_id,
+            'can_assign': can_assign,
+            'status_text': status_text
+        })
+        
+    return result
+
+def search_dashboard_members(search_term=""):
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        UPDATE Subscriptions 
+        SET status = 'EXPIRED' 
+        WHERE end_date < CAST(GETDATE() AS DATE) AND status = 'ACTIVE'
+    """)
+    conn.commit()
+    
+    query = """
+        SELECT 
+            m.member_id,
+            m.full_name,
+            m.national_id,
+            m.phone_number,
+            ISNULL(p.title, N'بدون بسته') AS package_title,
+            s.subscription_id,
+            s.remaining_sessions,
+            s.end_date,
+            s.status,
+            CASE 
+                WHEN MAX(c.checkin_time) IS NOT NULL THEN 
+                    CASE 
+                        WHEN DATEDIFF(DAY, MAX(c.checkin_time), GETDATE()) < 0 THEN 0
+                        ELSE DATEDIFF(DAY, MAX(c.checkin_time), GETDATE())
+                    END
+                ELSE -1
+            END AS days_absent
+        FROM Members m
+        LEFT JOIN (
+            SELECT member_id, package_id, subscription_id, remaining_sessions, end_date, status,
+                   ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
+            FROM Subscriptions
+        ) s ON m.member_id = s.member_id AND s.rn = 1
+        LEFT JOIN Packages p ON s.package_id = p.package_id
+        LEFT JOIN CheckIns c ON m.member_id = c.member_id
+    """
+    
+    where_clause = ""
+    params = []
+    
+    if search_term and search_term.strip():
+        where_clause = " WHERE (m.full_name LIKE ? OR m.phone_number LIKE ? OR m.national_id LIKE ? OR CAST(m.member_id AS VARCHAR) LIKE ?)"
+        term = f"%{search_term.strip()}%"
+        params = [term, term, term, term]
+        
+    group_by_clause = """
+        GROUP BY 
+            m.member_id, 
+            m.full_name, 
+            m.national_id, 
+            m.phone_number, 
+            p.title, 
+            s.subscription_id, 
+            s.remaining_sessions, 
+            s.end_date, 
+            s.status
+        ORDER BY m.member_id DESC
+    """
+    
+    final_query = query + where_clause + group_by_clause
+    
+    if params:
+        df = pd.read_sql(final_query, conn, params=params)
+    else:
+        df = pd.read_sql(final_query, conn)
+        
+    conn.close()
+    return df
+
+def get_churn_analytics_report():
+    conn = get_connection()
+    query = "SELECT * FROM vw_MemberChurnAnalytics ORDER BY [نمره ریسک ریزش (۰ تا ۱۰۰)] DESC"
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
