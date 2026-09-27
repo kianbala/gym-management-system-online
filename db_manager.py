@@ -35,8 +35,8 @@ else:
     st.error("⚠️ کلیدهای اتصال به Supabase (SUPABASE_URL و SUPABASE_KEY) یافت نشدند.")
 
 
-def add_member(name, phone, national_id, club_id, subscription_days=12):
-    """ثبت عضو جدید با میزان تعداد جلسات ورزشی و بررسی یکتایی کد ملی"""
+def add_member(name, phone, national_id, club_id, subscription_days=0):
+    """ثبت عضو جدید بدون بسته اولیه و بررسی یکتایی کد ملی"""
     if not supabase:
         return False, "اتصال به دیتابیس برقرار نیست."
     try:
@@ -45,7 +45,7 @@ def add_member(name, phone, national_id, club_id, subscription_days=12):
             "phone": phone.strip(),
             "national_id": national_id.strip(),
             "subscription_days": int(subscription_days),
-            "status": "active",
+            "status": "active" if int(subscription_days) > 0 else "inactive",
             "join_date": datetime.now().date().isoformat(),
             "club_id": club_id
         }

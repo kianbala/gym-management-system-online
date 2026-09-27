@@ -224,7 +224,9 @@ else:
             else:
                 days_absent = 0
 
-            if sub_days > 12:
+            if sub_days <= 0:
+                package_type = "بدون بسته"
+            elif sub_days > 12:
                 package_type = "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"
             else:
                 package_type = "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان"
@@ -291,22 +293,18 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۲: ثبت عضو جدید
+    # بخش ۲: ثبت عضو جدید (تغییر یافته: حذف انتخاب بسته)
     # ---------------------------------------------------------
     elif choice == "ثبت عضو جدید":
         st.subheader("➕ ثبت عضو جدید")
         with st.form("add_member_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
-            with col2:
+            with col1:
                 first_name = st.text_input("نام")
                 last_name = st.text_input("نام خانوادگی")
-            with col1:
+            with col2:
                 national_id = st.text_input("کد ملی (۱۰ رقمی)")
                 phone = st.text_input("شماره تماس (۱۱ رقمی)")
-                package_choice = st.selectbox(
-                    "انتخاب نوع بسته ورزشی:",
-                    ["بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان", "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"]
-                )
                 
             submit = st.form_submit_button("ثبت عضو", type="primary")
             
@@ -316,8 +314,6 @@ else:
                 n_id = national_id.strip()
                 ph = phone.strip()
                 
-                sessions = 12 if "12" in package_choice else 24
-                
                 if not (f_name and l_name and n_id and ph):
                     st.warning("لطفاً تمامی فیلدها را پر کنید.")
                 elif not (n_id.isdigit() and len(n_id) == 10):
@@ -326,7 +322,7 @@ else:
                     st.error("❌ شماره تماس باید دقیقاً ۱۱ رقم عددی باشد.")
                 else:
                     full_name = f"{f_name} {l_name}"
-                    success, message = add_member(full_name, ph, n_id, club_id, subscription_days=sessions)
+                    success, message = add_member(full_name, ph, n_id, club_id, subscription_days=0)
                     if success:
                         st.success(message)
                         time.sleep(1)
@@ -446,7 +442,7 @@ else:
                     pass
 
             if is_expired or sub_days <= 0:
-                status_label = "🟢 مجاز به تمدید (اتمام جلسات یا انقضا)"
+                status_label = "🟢 مجاز به تخصیص/تمدید (بدون بسته یا انقضا)"
                 status_warning_map[m_id] = None
             else:
                 status_label = f"🔴 دارای اشتراک فعال ({sub_days} جلسه باقی‌مانده)"
@@ -502,7 +498,7 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (اصلاح‌شده مطابق با الگوریتم AI)
+    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند
     # ---------------------------------------------------------
     elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
         st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند")
@@ -582,7 +578,6 @@ else:
                     name = row.get('name', '-')
                     phone = row.get('phone', '-')
                     
-                    # دریافت مستقیم نمره محاسبه شده از تابع AI
                     score = int(row.get('churn_risk_score', 0))
                     r_level = str(row.get('risk_level', ''))
                     
@@ -701,7 +696,7 @@ else:
 
         st.markdown("---")
 
-        # ۳. ریست کامل دیتابیس (با تایمر معکوس ۳ ثانیه‌ای واقعی و دکمه لغو فعال)
+        # ۳. ریست کامل دیتابیس
         st.markdown("### ⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
         st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
 
@@ -730,7 +725,6 @@ else:
                     time.sleep(1)
                     st.rerun()
 
-        # اجرای منطق تایمر معکوس بر پایه زمان واقعی
         if st.session_state.reset_pending:
             elapsed = time.time() - st.session_state.get('reset_start_time', time.time())
             remaining = 3 - int(elapsed)
