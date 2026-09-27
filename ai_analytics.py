@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import warnings
 from datetime import datetime
-from db_manager import supabase, get_all_members, get_attendance_logs
+from db_manager import get_all_members, get_attendance_logs
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
@@ -15,7 +15,7 @@ def get_hourly_occupancy(club_id: str):
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0] * 24})
         
         df = pd.DataFrame(attendance_logs)
-        df['checkin_datetime'] = pd.to_datetime(df['check_in_time'])
+        df['checkin_datetime'] = pd.to_datetime(df['check_in_time'], utc=True)
         df['hour'] = df['checkin_datetime'].dt.hour
         
         hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
@@ -25,14 +25,14 @@ def get_hourly_occupancy(club_id: str):
         result['checkin_count'] = result['checkin_count'].astype(int)
         
         return result
-    except Exception as e:
+    except Exception:
         return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0] * 24})
 
 
 def predict_churn_risk(club_id: str):
     """
     تحلیل هوشمند ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده)
-    مطابق منطق دقیق لوکال (امتیاز ۰ تا ۱۰۰)
+    سازگار با سیستم دو مرحله‌ای (اعضای بدون بسته و اعضای دارای اشتراک)
     """
     try:
         raw_members = get_all_members(club_id)
@@ -41,14 +41,14 @@ def predict_churn_risk(club_id: str):
         if not raw_members:
             return pd.DataFrame()
         
-        # استخراج آخرین زمان حضور هر عضو
+        # استخراج آخرین زمان حضور هر عضو به صورت ایمن و بدون تداخل Timezone
         last_checkin_map = {}
         for log in attendance_logs:
             m_id = log.get('member_id')
             check_time_str = log.get('check_in_time')
             if m_id and check_time_str and m_id not in last_checkin_map:
                 try:
-                    dt = pd.to_datetime(check_time_str)
+                    dt = pd.to_datetime(check_time_str, utc=True).tz_localize(None)
                     last_checkin_map[m_id] = dt
                 except Exception:
                     pass
@@ -66,7 +66,7 @@ def predict_churn_risk(club_id: str):
             # ۱. محاسبه روزهای غیبت
             if m_id in last_checkin_map:
                 last_dt = last_checkin_map[m_id]
-                days_absent = max(0, (now - last_dt.tz_localize(None)).days)
+                days_absent = max(0, (now - last_dt).days)
             elif join_date_str:
                 try:
                     join_dt = datetime.strptime(join_date_str, "%Y-%m-%d")
@@ -76,8 +76,8 @@ def predict_churn_risk(club_id: str):
             else:
                 days_absent = 30
 
-            # ۲. محاسبه امتیاز هوشمند ریسک (مطابق منطق شما)
-            # تاثیر روزهای غیبت (تا سقف ۷۰ امتیاز برای ۱۴ روز غیبت)
+            # ۲. محاسبه امتیاز هوشمند ریسک
+            # تاثیر روزهای غیبت (تا سقف ۷۰ امتیاز)
             risk_from_days = min(days_absent * 5, 70)
 
             # تاثیر جلسات رو به اتمام (تا سقف ۳۰ امتیاز)
@@ -113,5 +113,5 @@ def predict_churn_risk(club_id: str):
         df = pd.DataFrame(processed_members)
         return df
 
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
