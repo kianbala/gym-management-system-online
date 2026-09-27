@@ -153,3 +153,33 @@ def record_attendance(member_id, club_id):
         return True, "ورود با موفقیت ثبت شد و ۱ جلسه کسر گردید."
     except Exception as e:
         return False, f"خطا در ثبت تردد: {e}"
+
+def update_subscription(member_id, add_days, club_id):
+    """افزایش تعداد روزهای اعتبار اشتراک عضو"""
+    try:
+        res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
+        if not res.data:
+            return False
+        
+        current_days = res.data[0].get("subscription_days", 0) or 0
+        new_days = current_days + int(add_days)
+
+        update_res = supabase.table("members").update({
+            "subscription_days": new_days,
+            "status": "active"
+        }).eq("id", member_id).eq("club_id", club_id).execute()
+        
+        return bool(update_res.data)
+    except Exception as e:
+        st.error(f"خطا در تمدید اشتراک: {e}")
+        return False
+
+
+def get_attendance_logs(club_id):
+    """دریافت سوابق تردد اعضای باشگاه"""
+    try:
+        res = supabase.table("attendance").select("*, members(name, phone)").eq("club_id", club_id).order("check_in_time", desc=True).execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"خطا در دریافت سوابق تردد: {e}")
+        return []
