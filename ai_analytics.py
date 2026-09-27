@@ -1,112 +1,78 @@
 import pandas as pd
 import numpy as np
-import warnings
-from datetime import datetime
-from db_manager import get_connection
 
-warnings.filterwarnings('ignore', category=UserWarning)
-
-def get_hourly_occupancy():
-    conn = get_connection()
-    query = "SELECT checkin_time AS checkin_datetime FROM CheckIns"
-    df = pd.read_sql(query, conn)
-    conn.close()
-    
-    if df.empty:
-        return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
-    
-    df['checkin_datetime'] = pd.to_datetime(df['checkin_datetime'])
-    df['hour'] = df['checkin_datetime'].dt.hour
-    
-    hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
-    all_hours = pd.DataFrame({'hour': list(range(0, 24))})
-    result = pd.merge(all_hours, hourly_counts, on='hour', how='left').fillna(0)
-    result['checkin_count'] = result['checkin_count'].astype(int)
-    
-    return result
-
-def predict_churn_risk():
-    conn = get_connection()
-    query = """
-        SELECT 
-            m.member_id,
-            m.full_name,
-            m.phone_number,
-            s.subscription_id,
-            s.remaining_sessions,
-            s.end_date,
-            MAX(c.checkin_time) as last_checkin
-        FROM Members m
-        JOIN Subscriptions s ON m.member_id = s.member_id
-        LEFT JOIN CheckIns c ON s.subscription_id = c.subscription_id
-        WHERE s.status = 'ACTIVE'
-        GROUP BY m.member_id, m.full_name, m.phone_number, s.subscription_id, s.remaining_sessions, s.end_date
+def run_full_analytics(df_members: pd.DataFrame, df_checkins: pd.DataFrame):
     """
-    df = pd.read_sql(query, conn)
-    
-    if df.empty:
-        conn.close()
-        return pd.DataFrame()
-    
-    now = datetime.now()
-    df['last_checkin'] = pd.to_datetime(df['last_checkin'])
-    
-    def calc_days(x):
-        if pd.notnull(x):
-            diff = (now - x).days
-            return max(0, diff)
-        return 30
+    اجرای منطق ۶ بخش هوش مصنوعی روی داده‌های ورودی
+    """
+    if df_members.empty:
+        return None
 
-    df['days_since_last_checkin'] = df['last_checkin'].apply(calc_days)
+    # ترامپ/ترکیب داده‌ها
+    df = df_members.copy()
     
-    def calculate_risk_score(row):
-        days = row['days_since_last_checkin']
-        sessions = row['remaining_sessions']
-        
-        risk_from_days = min(days * 5, 70)
-        
-        if sessions == 0:
-            risk_from_sessions = 30
-        elif sessions <= 3:
-            risk_from_sessions = 15
-        else:
-            risk_from_sessions = 0
-            
-        return float(risk_from_days + risk_from_sessions)
+    # ۱. بخش اول: شاخص‌های کلیدی عملکرد (KPIs)
+    total_members = len(df)
+    active_members = len(df[df['status'] == 'Active']) if 'status' in df.columns else total_members
+    
+    # ۲. بخش دوم: تحلیل و پیش‌بینی ریسک ریزش (Churn Risk Analysis)
+    # بر اساس تعداد ترددها یا روزهای گذشته از آخرین حضور
+    if 'checkin_count' not in df.columns and not df_checkins.empty:
+        checkin_counts = df_checkins.groupby('member_id').size().reset_index(name='checkin_count')
+        df = pd.merge(df, checkin_counts, left_on='id', right_on='member_id', how='left')
+        df['checkin_count'] = df['checkin_count'].fillna(0)
 
-    df['churn_risk_score'] = df.apply(calculate_risk_score, axis=1)
+    # الگوریتم سنجش ریسک
+    def calculate_risk(row):
+        count = row.get('checkin_count', 0)
+        if count < 4:
+            return 'High Risk'
+        elif 4 <= count <= 10:
+            return 'Medium Risk'
+        return 'Low Risk'
+
+    df['risk_level'] = df.apply(calculate_risk, axis=1)
     
-    def map_to_label(score):
-        if score >= 70:
-            return 'بالا (High)'
-        elif score >= 40:
-            return 'متوسط (Medium)'
-        else:
-            return 'پایین (Low)'
-            
-    df['risk_level'] = df['churn_risk_score'].apply(map_to_label)
-    
-    cursor = conn.cursor()
-    for _, row in df.iterrows():
-        member_id = int(row['member_id'])
-        score = float(row['churn_risk_score'])
-        
-        cursor.execute("SELECT analytics_id FROM AI_Analytics WHERE member_id = ?", (member_id,))
-        exists = cursor.fetchone()
-        
-        if exists:
-            cursor.execute("""
-                UPDATE AI_Analytics 
-                SET churn_risk_score = ?, last_calculated = GETDATE()
-                WHERE member_id = ?
-            """, (score, member_id))
-        else:
-            cursor.execute("""
-                INSERT INTO AI_Analytics (member_id, churn_risk_score, last_calculated)
-                VALUES (?, ?, GETDATE())
-            """, (score, member_id))
-            
-    conn.commit()
-    conn.close()
-    
-    return df
+    high_risk_df = df[df['risk_level'] == 'High Risk']
+    churn_rate = round((len(high_risk_df) / total_members) * 100, 1) if total_members > 0 else 0
+
+    # ۳. بخش سوم: تحلیل الگوهای تردد (Check-in Patterns)
+    avg_checkins = round(df['checkin_count'].mean(), 1) if 'checkin_count' in df.columns else 0
+
+    # ۴. بخش چهارم: سگمنت‌بندی هوشمند اعضا (Segmentation)
+    high_risk_count = len(df[df['risk_level'] == 'High Risk'])
+    med_risk_count = len(df[df['risk_level'] == 'Medium Risk'])
+    low_risk_count = len(df[df['risk_level'] == 'Low Risk'])
+
+    # ۵. بخش پنجم: شبیه‌سازی سناریوی بازگشت (Retention Simulation)
+    # تخمین اثرگذاری کمپین‌های پیشنهادی
+    estimated_recovered = int(high_risk_count * 0.35)  # فرض بازگشت ۳۵ درصد با مداخله هوش مصنوعی
+
+    # ۶. بخش ششم: پیشنهادها و اکشن‌پلن عملیاتی (AI Action Plan)
+    recommendations = []
+    if high_risk_count > 0:
+        recommendations.append(f"ارسال پیامک تخفیف تمدید برای {high_risk_count} عضو در معرض خطر ریزش شدید.")
+    if avg_checkins < 5:
+        recommendations.append("برگزاری برنامه‌های انگیزشی یا مربی خصوصی برای افزایش میانگین تردد هفته.")
+    if not recommendations:
+        recommendations.append("وضعیت تردد و ماندگاری اعضا در سطح مطلوب قرار دارد.")
+
+    return {
+        "total_members": total_members,
+        "active_members": active_members,
+        "churn_rate": churn_rate,
+        "avg_checkins": avg_checkins,
+        "high_risk_df": high_risk_df,
+        "segmentation": {
+            "High Risk": high_risk_count,
+            "Medium Risk": med_risk_count,
+            "Low Risk": low_risk_count
+        },
+        "simulation": {
+            "current_high_risk": high_risk_count,
+            "estimated_recovered": estimated_recovered,
+            "projected_high_risk": high_risk_count - estimated_recovered
+        },
+        "recommendations": recommendations,
+        "full_df": df
+    }
