@@ -18,7 +18,9 @@ from auth import authenticate_user, add_user
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
-# استایل‌دهی سفارشی راست‌به‌چپ
+# -------------------------------------------------------------
+# استایل‌دهی سفارشی (اصلاح اندازه فونت‌ها و ظاهر کارت‌ها)
+# -------------------------------------------------------------
 st.markdown("""
     <style>
     html, body, [class*="css"] {
@@ -36,12 +38,39 @@ st.markdown("""
     .stDataFrame {
         direction: rtl !important;
     }
-    .metric-card {
-        background-color: #1e222d;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-        border: 1px solid #2d323f;
+
+    /* تنظیم اندازه فونت متغییرها و تیترهای کارت‌های آماری */
+    [data-testid="stMetricValue"] {
+        font-size: 1.15rem !important;
+        font-weight: 700 !important;
+        white-space: nowrap !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.8rem !important;
+        color: #b0b8c5 !important;
+        white-space: nowrap !important;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.72rem !important;
+    }
+
+    /* تنظیم کارت‌های آماری بالا */
+    div[data-testid="metric-container"] {
+        background-color: #1a1f2c;
+        border: 1px solid #2e3545;
+        padding: 8px 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    /* اصلاح اندازه عناوین و زیرعنوان‌ها */
+    h1, h2, h3 {
+        font-size: 1.25rem !important;
+        font-weight: 600 !important;
+        margin-bottom: 0.5rem !important;
+    }
+    .stSubheader {
+        font-size: 1.1rem !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -140,7 +169,7 @@ else:
     club_id = st.session_state.club_id
 
     # ---------------------------------------------------------
-    # بخش ۱: داشبورد و لیست اعضا و وضعیت اشتراک‌ها
+    # بخش ۱: داشبورد و لیست اعضا
     # ---------------------------------------------------------
     if choice == "داشبورد و اعضا":
         st.subheader("📑 لیست اعضا و وضعیت اشتراک‌ها")
@@ -306,7 +335,7 @@ else:
                         st.error(message)
 
     # ---------------------------------------------------------
-    # بخش ۳: ثبت تردد و کسر جلسه
+    # بخش ۳: ثبت تردد
     # ---------------------------------------------------------
     elif choice == "ثبت تردد":
         st.subheader("🚪 ثبت ورود ورزشکار و کسر جلسه")
@@ -376,7 +405,7 @@ else:
             st.info("هیچ ورزشکار فعالی با این مشخصات یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۴: تخصیص بسته جدید به عضو
+    # بخش ۴: تخصیص بسته
     # ---------------------------------------------------------
     elif choice == "تخصیص بسته":
         st.subheader("💳 اختصاص بسته جدید به عضو")
@@ -473,7 +502,7 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (مطابق نسخه لوکال)
+    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند
     # ---------------------------------------------------------
     elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
         st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند")
@@ -486,14 +515,14 @@ else:
         total_members_count = len(raw_members) if raw_members else 1
         total_checkins = len(attendance_logs) if attendance_logs else (int(hourly_df['checkin_count'].sum()) if not hourly_df.empty else 0)
         
-        # محاسبه ساعت شلوغی
+        # محاسبه ساعت شلوغی با فرمت مرتب
         if not hourly_df.empty and 'checkin_count' in hourly_df.columns:
             peak_row = hourly_df.loc[hourly_df['checkin_count'].idxmax()]
             peak_hour_str = f"ساعت {int(peak_row['hour']):02d}:00"
         else:
             peak_hour_str = "نامشخص"
 
-        # محاسبه دسته‌بندی ریسک اعضا
+        # دسته‌بندی ریسک اعضا
         high_risk_cnt = 0
         med_risk_cnt = 0
         low_risk_cnt = 0
@@ -517,22 +546,21 @@ else:
         med_pct = (med_risk_cnt / total_members_count) * 100 if total_members_count else 0
         low_pct = (low_risk_cnt / total_members_count) * 100 if total_members_count else 0
 
-        # کارت‌های آماری بالایی
+        # ۵ کارت شاخص آماری با فونت‌های بهینه‌شده
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             st.metric("مجموع ترددها", f"{total_checkins} ورود")
         with c2:
             st.metric("شلوغ‌ترین زمان", peak_hour_str)
         with c3:
-            st.metric("🔴 ریسک بالا", f"{high_risk_cnt} نفر", f"↑ {high_pct:.1f}% از کل اعضا")
+            st.metric("🔴 ریسک بالا", f"{high_risk_cnt} نفر", f"↑ {high_pct:.1f}%")
         with c4:
-            st.metric("🟡 ریسک متوسط", f"{med_risk_cnt} نفر", f"↑ {med_pct:.1f}% از کل اعضا")
+            st.metric("🟡 ریسک متوسط", f"{med_risk_cnt} نفر", f"↑ {med_pct:.1f}%")
         with c5:
-            st.metric("🟢 ریسک پایین", f"{low_risk_cnt} نفر", f"↑ {low_pct:.1f}% از کل اعضا")
+            st.metric("🟢 ریسک پایین", f"{low_risk_cnt} نفر", f"↑ {low_pct:.1f}%")
 
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        # دو ستون اصلی تحلیل
         col_chart, col_table = st.columns([1, 1])
 
         with col_chart:
@@ -544,7 +572,7 @@ else:
                 st.info("هنوز ترددی ثبت نشده است.")
 
         with col_table:
-            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (گزارش مستقیم از SQL View)")
+            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (SQL View)")
             
             table_rows = []
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -556,7 +584,6 @@ else:
                     phone = row.get('phone', '-')
                     days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
                     
-                    # محاسبه نمره ریسک ۰ تا ۱۰۰
                     score = min(100, int((days_abs / 30) * 100))
                     
                     if score >= 70:
@@ -576,13 +603,12 @@ else:
                     })
 
                 df_table = pd.DataFrame(table_rows)
-                # مرتب‌سازی بر اساس بیشترین نمره ریسک
                 df_table = df_table.sort_values(by="نمره ریسک (۰ تا ۱۰۰)", ascending=False)
                 st.dataframe(df_table, use_container_width=True, hide_index=True)
             else:
                 st.success("هیچ عضوی در وضعیت ریسک ریزش قرار ندارد.")
 
-            st.caption("این اطلاعات مستقیماً از نمای تحلیلی دیتابیس (vw_MemberChurnAnalytics) فراخوانی شده است.")
+            st.caption("اطلاعات مستقیماً از نمای تحلیلی دیتابیس (vw_MemberChurnAnalytics) فراخوانی شده است.")
 
     # ---------------------------------------------------------
     # بخش ۶: مدیریت و حذف
