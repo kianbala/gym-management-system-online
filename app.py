@@ -502,7 +502,7 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند
+    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (اصلاح‌شده مطابق با الگوریتم AI)
     # ---------------------------------------------------------
     elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
         st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند")
@@ -528,11 +528,12 @@ else:
         if total_members_count > 0:
             if not churn_df.empty:
                 for _, row in churn_df.iterrows():
+                    score = float(row.get('churn_risk_score', 0))
                     r_level = str(row.get('risk_level', '')).lower()
-                    days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
-                    if 'high' in r_level or 'بالا' in r_level or days_abs >= 25:
+                    
+                    if 'high' in r_level or 'بالا' in r_level or score >= 70:
                         high_risk_cnt += 1
-                    elif 'med' in r_level or 'متوسط' in r_level or days_abs >= 14:
+                    elif 'med' in r_level or 'متوسط' in r_level or score >= 40:
                         med_risk_cnt += 1
                     else:
                         low_risk_cnt += 1
@@ -570,7 +571,7 @@ else:
                 st.info("هنوز ترددی ثبت نشده است.")
 
         with col_table:
-            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (SQL View)")
+            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (AI Engine)")
             
             table_rows = []
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -580,13 +581,14 @@ else:
                     m_id = row.get('id', row.get('member_id', '-'))
                     name = row.get('name', '-')
                     phone = row.get('phone', '-')
-                    days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
                     
-                    score = min(100, int((days_abs / 30) * 100))
+                    # دریافت مستقیم نمره محاسبه شده از تابع AI
+                    score = int(row.get('churn_risk_score', 0))
+                    r_level = str(row.get('risk_level', ''))
                     
-                    if score >= 70:
+                    if 'high' in r_level.lower() or 'بالا' in r_level or score >= 70:
                         level_str = "🔴 بالا (High)"
-                    elif score >= 40:
+                    elif 'med' in r_level.lower() or 'متوسط' in r_level or score >= 40:
                         level_str = "🟡 متوسط (Medium)"
                     else:
                         level_str = "🟢 پایین (Low)"
@@ -606,10 +608,10 @@ else:
             else:
                 st.success("هیچ عضوی در وضعیت ریسک ریزش قرار ندارد.")
 
-            st.caption("اطلاعات مستقیماً از نمای تحلیلی دیتابیس (vw_MemberChurnAnalytics) فراخوانی شده است.")
+            st.caption("اطلاعات مستقیماً از الگوریتم پیش‌بینی هوشمند (ai_analytics) پردازش شده است.")
 
     # ---------------------------------------------------------
-    # بخش ۶: مدیریت و حذف (همراه با تایمر ۳ ثانیه‌ای غیربلاک‌کننده و دکمه لغو)
+    # بخش ۶: مدیریت و حذف
     # ---------------------------------------------------------
     elif choice == "مدیریت و حذف":
         raw_members = get_all_members(club_id)
