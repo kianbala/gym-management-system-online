@@ -36,6 +36,13 @@ st.markdown("""
     .stDataFrame {
         direction: rtl !important;
     }
+    .metric-card {
+        background-color: #1e222d;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        border: 1px solid #2d323f;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -124,7 +131,7 @@ else:
         "ثبت عضو جدید", 
         "ثبت تردد", 
         "تخصیص بسته", 
-        "📊 تحلیل هوش مصنوعی", 
+        "📊 تحلیل و هوش مصنوعی", 
         "مدیریت و حذف",
         "⚙️ ساخت باشگاه/مدیر جدید"
     ]
@@ -165,7 +172,6 @@ else:
             join_date_str = m.get("join_date")
             is_expired_by_time = False
             
-            # انقضای زمانی: دقیقا ۳۰ روز بعد از تاریخ ثبت‌نام/تمدید
             if join_date_str:
                 try:
                     join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
@@ -178,7 +184,6 @@ else:
             else:
                 expire_str = "نامشخص"
 
-            # روزهای غیبت
             if m_id in last_checkin_map:
                 days_absent = (now_date - last_checkin_map[m_id]).days
             elif join_date_str:
@@ -190,13 +195,11 @@ else:
             else:
                 days_absent = 0
 
-            # تعیین نوع بسته
             if sub_days > 12:
                 package_type = "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"
             else:
                 package_type = "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان"
 
-            # وضعیت: اگر ۳۰ روز گذشته باشد یا جلسات ۰ شده باشد -> EXPIRED
             if is_expired_by_time or sub_days <= 0:
                 status_str = "EXPIRED"
             else:
@@ -213,7 +216,7 @@ else:
                 "تاریخ انقضا": expire_str,
                 "وضعیت": status_str,
                 "روزهای غیبت": max(0, days_absent),
-                "is_active_flag": (status_str == "ACTIVE") # پرچم کمکی
+                "is_active_flag": (status_str == "ACTIVE")
             })
 
         col_filter, col_search = st.columns([1, 2])
@@ -311,7 +314,6 @@ else:
         raw_members = get_all_members(club_id)
         now_date = datetime.now().date()
         
-        # شناسایی دقیق اعضایی که ۳۰ روزشان تمام نشده و جلسه باقی‌مانده دارند
         active_members = []
         for m in raw_members:
             sub_days = m.get("subscription_days", 0) or 0
@@ -383,7 +385,6 @@ else:
         attendance_logs = get_attendance_logs(club_id)
         now_date = datetime.now().date()
 
-        # محاسبه آخرین تاریخ حضور هر عضو
         last_checkin_map = {}
         for log in attendance_logs:
             m_id = log.get('member_id')
@@ -472,32 +473,116 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۵: تحلیل هوش مصنوعی
+    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (مطابق نسخه لوکال)
     # ---------------------------------------------------------
-    elif choice == "📊 تحلیل هوش مصنوعی":
-        st.subheader("🤖 تحلیل رفتاری و شلوغی باشگاه")
+    elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
+        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند")
+        
         hourly_df = get_hourly_occupancy(club_id)
         churn_df = predict_churn_risk(club_id)
+        raw_members = get_all_members(club_id)
+        attendance_logs = get_attendance_logs(club_id)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("### 📈 نمودار ساعات شلوغی")
+        total_members_count = len(raw_members) if raw_members else 1
+        total_checkins = len(attendance_logs) if attendance_logs else (int(hourly_df['checkin_count'].sum()) if not hourly_df.empty else 0)
+        
+        # محاسبه ساعت شلوغی
+        if not hourly_df.empty and 'checkin_count' in hourly_df.columns:
+            peak_row = hourly_df.loc[hourly_df['checkin_count'].idxmax()]
+            peak_hour_str = f"ساعت {int(peak_row['hour']):02d}:00"
+        else:
+            peak_hour_str = "نامشخص"
+
+        # محاسبه دسته‌بندی ریسک اعضا
+        high_risk_cnt = 0
+        med_risk_cnt = 0
+        low_risk_cnt = 0
+
+        if not churn_df.empty:
+            for _, row in churn_df.iterrows():
+                r_level = str(row.get('risk_level', '')).lower()
+                days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
+                if 'high' in r_level or 'بالا' in r_level or days_abs >= 25:
+                    high_risk_cnt += 1
+                elif 'med' in r_level or 'متوسط' in r_level or days_abs >= 14:
+                    med_risk_cnt += 1
+                else:
+                    low_risk_cnt += 1
+
+            low_risk_cnt = max(low_risk_cnt, total_members_count - high_risk_cnt - med_risk_cnt)
+        else:
+            low_risk_cnt = total_members_count
+
+        high_pct = (high_risk_cnt / total_members_count) * 100 if total_members_count else 0
+        med_pct = (med_risk_cnt / total_members_count) * 100 if total_members_count else 0
+        low_pct = (low_risk_cnt / total_members_count) * 100 if total_members_count else 0
+
+        # کارت‌های آماری بالایی
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            st.metric("مجموع ترددها", f"{total_checkins} ورود")
+        with c2:
+            st.metric("شلوغ‌ترین زمان", peak_hour_str)
+        with c3:
+            st.metric("🔴 ریسک بالا", f"{high_risk_cnt} نفر", f"↑ {high_pct:.1f}% از کل اعضا")
+        with c4:
+            st.metric("🟡 ریسک متوسط", f"{med_risk_cnt} نفر", f"↑ {med_pct:.1f}% از کل اعضا")
+        with c5:
+            st.metric("🟢 ریسک پایین", f"{low_risk_cnt} نفر", f"↑ {low_pct:.1f}% از کل اعضا")
+
+        st.markdown("---")
+
+        # دو ستون اصلی تحلیل
+        col_chart, col_table = st.columns([1, 1])
+
+        with col_chart:
+            st.write("### 📈 تحلیل ساعات شلوغی باشگاه")
             if not hourly_df.empty:
                 st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
+                st.caption("پراکندگی ورود ورزشکاران در طول ۲۴ ساعت شبانه‌روز")
             else:
                 st.info("هنوز ترددی ثبت نشده است.")
-        with col2:
-            st.write("### ⚠️ تحلیل ریسک ریزش اعضا")
+
+        with col_table:
+            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (گزارش مستقیم از SQL View)")
+            
+            table_rows = []
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
             if not churn_df.empty:
-                display_churn = churn_df[['name', 'phone', 'days_since_last_checkin', 'risk_level']].rename(columns={
-                    'name': 'نام',
-                    'phone': 'شماره تماس',
-                    'days_since_last_checkin': 'روزهای غیبت',
-                    'risk_level': 'سطح ریسک'
-                })
-                st.dataframe(display_churn, use_container_width=True, hide_index=True)
+                for _, row in churn_df.iterrows():
+                    m_id = row.get('id', row.get('member_id', '-'))
+                    name = row.get('name', '-')
+                    phone = row.get('phone', '-')
+                    days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
+                    
+                    # محاسبه نمره ریسک ۰ تا ۱۰۰
+                    score = min(100, int((days_abs / 30) * 100))
+                    
+                    if score >= 70:
+                        level_str = "🔴 بالا (High)"
+                    elif score >= 40:
+                        level_str = "🟡 متوسط (Medium)"
+                    else:
+                        level_str = "🟢 پایین (Low)"
+
+                    table_rows.append({
+                        "کد عضویت": m_id,
+                        "نام ورزشکار": name,
+                        "شماره تماس": phone,
+                        "نمره ریسک (۰ تا ۱۰۰)": score,
+                        "سطح ریسک": level_str,
+                        "تاریخ آخرین محاسبه": now_str
+                    })
+
+                df_table = pd.DataFrame(table_rows)
+                # مرتب‌سازی بر اساس بیشترین نمره ریسک
+                df_table = df_table.sort_values(by="نمره ریسک (۰ تا ۱۰۰)", ascending=False)
+                st.dataframe(df_table, use_container_width=True, hide_index=True)
             else:
                 st.success("هیچ عضوی در وضعیت ریسک ریزش قرار ندارد.")
+
+            st.caption("این اطلاعات مستقیماً از نمای تحلیلی دیتابیس (vw_MemberChurnAnalytics) فراخوانی شده است.")
 
     # ---------------------------------------------------------
     # بخش ۶: مدیریت و حذف
