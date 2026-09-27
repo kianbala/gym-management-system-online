@@ -12,7 +12,7 @@ from db_manager import (
 )
 from ai_analytics import get_hourly_occupancy, predict_churn_risk
 from auth import authenticate_user, add_user
-
+#نننن
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
 # استایل RTL
