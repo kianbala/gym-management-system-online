@@ -2,14 +2,16 @@ import random
 from datetime import datetime, timedelta
 from db_manager import supabase
 
+# اسامی و فامیلی‌های فارسی
 FIRST_NAMES = [
-    'Ali', 'Mohammad', 'Amir', 'Hossein', 'Mehdi', 'Reza', 'Soroush', 'Arash', 'Kamran', 'Navid',
-    'Sara', 'Niloofar', 'Maryam', 'Zahra', 'Parisa', 'Fatemeh', 'Mehrnoosh', 'Kiana', 'Mina', 'Narges'
+    'علی', 'محمد', 'امیر', 'حسین', 'مهدی', 'رضا', 'سروش', 'آرش', 'کامران', 'نوید',
+    'سارا', 'نیلوفر', 'مریم', 'زهرا', 'پریسا', 'فاطمه', 'مهرنوش', 'کیانا', 'مینا', 'نرگس',
+    'پرهام', 'سامان', 'دانیال', 'فرزاد', 'یلدا', 'مونا', 'الهام', 'سپیده'
 ]
 
 LAST_NAMES = [
-    'Rezayi', 'Mohammadi', 'Ahmadi', 'Karimi', 'Hosseini', 'Kazemi', 'Ghasemi', 'Nouri', 'Moradi', 'Ebrahimi',
-    'Sadeghi', 'Heidari', 'Mousavi', 'Najafi', 'Mozaffari', 'Sharifi', 'Farahani', 'Jafari', 'Akbari', 'Bagheri'
+    'رضایی', 'محمدی', 'احمدی', 'کریمی', 'حسینی', 'کاظمی', 'قاسمی', 'نوری', 'مرادی', 'ابراهیمی',
+    'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
 def generate_dummy_data_for_manager(username):
@@ -24,6 +26,7 @@ def generate_dummy_data_for_manager(username):
     print(f"⏳ Generating 30 sample members and attendance history for manager: '{username}' (Club: '{club_id}') ...")
     now = datetime.now()
     
+    # ساعات شلوغی و معمولی جهت توزیع واقع‌گرایانه نمودار ساعات شلوغی
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
     regular_hours = [8, 9, 10, 11, 14, 15, 16, 22]
     all_hours = peak_hours + regular_hours
@@ -38,27 +41,37 @@ def generate_dummy_data_for_manager(username):
         national_id = f"{1000000000 + (unique_seed * 123) % 899999999}"[:10]
         phone_number = f"0912{random.randint(1000000, 9999999)}"
 
-        sub_status = random.choices(['active', 'expired'], weights=[0.80, 0.20])[0]
+        # تعیین بسته اولیه (۱۲ جلسه یا ۲۴ جلسه) مطابق با سیستم اصلی
+        initial_sessions = random.choices([12, 24], weights=[0.60, 0.40])[0]
 
-        if sub_status == 'expired':
-            # کاربران منقضی‌شده (تاریخ عضویت بیش از ۳۰ روز قبل و جلسات صفر)
-            days_active = random.randint(35, 60)
-            subscription_days = 0
-            last_checkin_days_ago = random.randint(15, days_active)
-        else:
-            # کاربران فعال (جلسات بین ۱ تا ۲۴ جلسه)
-            subscription_days = random.randint(1, 24)
-            pattern = random.choices(['regular', 'at_risk', 'churning'], weights=[0.60, 0.25, 0.15])[0]
-            
-            if pattern == 'regular':
-                days_active = random.randint(1, 28)
-                last_checkin_days_ago = random.randint(0, min(3, days_active))
-            elif pattern == 'at_risk':
-                days_active = random.randint(10, 28)
-                last_checkin_days_ago = random.randint(6, min(12, days_active))
-            else:  # churning (ریسک بالا)
-                days_active = random.randint(18, 28)
-                last_checkin_days_ago = random.randint(15, days_active)
+        # دسته‌بندی الگوی رفتار کاربر جهت شبیه‌سازی دقیق خروجی هوش مصنوعی
+        profile_type = random.choices(['regular', 'at_risk', 'churning', 'expired'], weights=[0.45, 0.25, 0.15, 0.15])[0]
+
+        if profile_type == 'expired':
+            sub_status = 'expired'
+            days_active = random.randint(32, 60)
+            num_attendances = min(initial_sessions, random.randint(8, initial_sessions))
+            last_checkin_days_ago = random.randint(20, days_active)
+            remaining_sessions = 0
+        elif profile_type == 'churning':  # ریسک بالا (غیبت طولانی یا عدم استفاده از جلسات)
+            sub_status = 'active'
+            days_active = random.randint(15, 28)
+            num_attendances = random.randint(1, 3)
+            last_checkin_days_ago = random.randint(14, days_active)
+            remaining_sessions = max(1, initial_sessions - num_attendances)
+        elif profile_type == 'at_risk':   # ریسک متوسط
+            sub_status = 'active'
+            days_active = random.randint(10, 25)
+            num_attendances = random.randint(2, 6)
+            last_checkin_days_ago = random.randint(6, 12)
+            remaining_sessions = max(1, initial_sessions - num_attendances)
+        else:                             # ریسک پایین / کاربر منظم
+            sub_status = 'active'
+            days_active = random.randint(1, 28)
+            max_possible_logs = min(initial_sessions - 1, int(days_active * 0.7) + 1)
+            num_attendances = random.randint(1, max(1, max_possible_logs))
+            last_checkin_days_ago = random.randint(0, min(3, days_active))
+            remaining_sessions = max(1, initial_sessions - num_attendances)
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
 
@@ -67,7 +80,7 @@ def generate_dummy_data_for_manager(username):
             "phone": phone_number,
             "national_id": national_id,
             "join_date": join_date,
-            "subscription_days": subscription_days,
+            "subscription_days": remaining_sessions,  # تعداد جلسات باقیمانده واقعی
             "status": sub_status,
             "club_id": club_id
         }
@@ -78,35 +91,38 @@ def generate_dummy_data_for_manager(username):
 
         member_id = member_res.data[0]['id']
 
-        # ثبت آخرین حضور
-        hour = random.choice(all_hours)
-        minute = random.randint(0, 59)
-        last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
-
-        attendance_records = [{
-            "member_id": member_id,
-            "check_in_time": last_checkin_time.isoformat(),
-            "club_id": club_id
-        }]
-
-        # ثبت ترددهای قبلی جهت شبیه‌سازی سابقه
-        used_sessions = random.randint(2, 8)
-        for _ in range(used_sessions):
-            min_past = last_checkin_days_ago + 1
-            max_past = max(min_past, days_active)
-            
-            past_days_ago = random.randint(min_past, max_past)
-            past_hour = random.choice(all_hours)
-            past_minute = random.randint(0, 59)
-            past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
-            
+        # ثبت سابقه ترددهای واقعی به تعداد جلسات استفاده شده
+        attendance_records = []
+        if num_attendances > 0:
+            # ۱. ثبت آخرین ورود
+            hour = random.choice(all_hours)
+            minute = random.randint(0, 59)
+            last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
             attendance_records.append({
                 "member_id": member_id,
-                "check_in_time": past_checkin_time.isoformat(),
+                "check_in_time": last_checkin_time.isoformat(),
                 "club_id": club_id
             })
 
-        supabase.table("attendance").insert(attendance_records).execute()
+            # ۲. ثبت ترددهای قبلی بین تاریخ عضویت و آخرین ورود
+            for _ in range(num_attendances - 1):
+                min_past = last_checkin_days_ago + 1
+                max_past = max(min_past, days_active)
+                
+                past_days_ago = random.randint(min_past, max_past)
+                past_hour = random.choice(all_hours)
+                past_minute = random.randint(0, 59)
+                past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
+                
+                attendance_records.append({
+                    "member_id": member_id,
+                    "check_in_time": past_checkin_time.isoformat(),
+                    "club_id": club_id
+                })
+
+        if attendance_records:
+            supabase.table("attendance").insert(attendance_records).execute()
+            
         added_count += 1
 
     print(f"✅ Created {added_count} sample members & attendance logs for manager '{username}' (Club: '{club_id}')!")
