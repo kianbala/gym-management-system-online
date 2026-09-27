@@ -1,78 +1,89 @@
 import pandas as pd
-import numpy as np
+from datetime import datetime, timedelta
+from db_manager import supabase
 
-def run_full_analytics(df_members: pd.DataFrame, df_checkins: pd.DataFrame):
-    """
-    اجرای منطق ۶ بخش هوش مصنوعی روی داده‌های ورودی
-    """
-    if df_members.empty:
-        return None
+def get_hourly_occupancy(club_id):
+    """محاسبه ساعات شلوغی باشگاه بر اساس club_id"""
+    try:
+        res = (
+            supabase.table("attendance")
+            .select("check_in_time")
+            .eq("club_id", club_id)
+            .execute()
+        )
+        data = res.data if res.data else []
+        
+        if not data:
+            return pd.DataFrame(columns=['hour', 'checkin_count'])
+        
+        df = pd.DataFrame(data)
+        df['check_in_time'] = pd.to_datetime(df['check_in_time'])
+        df['hour'] = df['check_in_time'].dt.hour
+        
+        hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
+        return hourly_counts
+    except Exception as e:
+        return pd.DataFrame(columns=['hour', 'checkin_count'])
 
-    # ترامپ/ترکیب داده‌ها
-    df = df_members.copy()
-    
-    # ۱. بخش اول: شاخص‌های کلیدی عملکرد (KPIs)
-    total_members = len(df)
-    active_members = len(df[df['status'] == 'Active']) if 'status' in df.columns else total_members
-    
-    # ۲. بخش دوم: تحلیل و پیش‌بینی ریسک ریزش (Churn Risk Analysis)
-    # بر اساس تعداد ترددها یا روزهای گذشته از آخرین حضور
-    if 'checkin_count' not in df.columns and not df_checkins.empty:
-        checkin_counts = df_checkins.groupby('member_id').size().reset_index(name='checkin_count')
-        df = pd.merge(df, checkin_counts, left_on='id', right_on='member_id', how='left')
-        df['checkin_count'] = df['checkin_count'].fillna(0)
+def predict_churn_risk(club_id):
+    """شناسایی اعضای در معرض ریزش بر اساس club_id"""
+    try:
+        # ۱. دریافت لیست اعضای فعال باشگاه
+        members_res = (
+            supabase.table("members")
+            .select("id, name, phone")
+            .eq("club_id", club_id)
+            .execute()
+        )
+        members = members_res.data if members_res.data else []
+        if not members:
+            return pd.DataFrame()
 
-    # الگوریتم سنجش ریسک
-    def calculate_risk(row):
-        count = row.get('checkin_count', 0)
-        if count < 4:
-            return 'High Risk'
-        elif 4 <= count <= 10:
-            return 'Medium Risk'
-        return 'Low Risk'
+        # ۲. دریافت آخرین تاریخ تردد اعضا
+        attendance_res = (
+            supabase.table("attendance")
+            .select("member_id, check_in_time")
+            .eq("club_id", club_id)
+            .order("check_in_time", desc=True)
+            .execute()
+        )
+        attendance = attendance_res.data if attendance_res.data else []
+        
+        # نگاشت آخرین تردد به هر عضو
+        last_checkin_map = {}
+        for log in attendance:
+            m_id = log['member_id']
+            if m_id not in last_checkin_map:
+                last_checkin_map[m_id] = pd.to_datetime(log['check_in_time'])
 
-    df['risk_level'] = df.apply(calculate_risk, axis=1)
-    
-    high_risk_df = df[df['risk_level'] == 'High Risk']
-    churn_rate = round((len(high_risk_df) / total_members) * 100, 1) if total_members > 0 else 0
+        now = datetime.now()
+        churn_data = []
 
-    # ۳. بخش سوم: تحلیل الگوهای تردد (Check-in Patterns)
-    avg_checkins = round(df['checkin_count'].mean(), 1) if 'checkin_count' in df.columns else 0
+        for m in members:
+            m_id = m['id']
+            if m_id in last_checkin_map:
+                days_absent = (now - last_checkin_map[m_id].replace(tzinfo=None)).days
+            else:
+                days_absent = 30  # اگر اصلاً تردد نداشته، ۳۰ روز غیبت فرض می‌شود
 
-    # ۴. بخش چهارم: سگمنت‌بندی هوشمند اعضا (Segmentation)
-    high_risk_count = len(df[df['risk_level'] == 'High Risk'])
-    med_risk_count = len(df[df['risk_level'] == 'Medium Risk'])
-    low_risk_count = len(df[df['risk_level'] == 'Low Risk'])
+            # تعیین سطح ریسک ریزش
+            if days_absent >= 14:
+                risk_level = "🔴 ریسک بالا"
+            elif days_absent >= 7:
+                risk_level = "🟡 ریسک متوسط"
+            else:
+                risk_level = "🟢 فعال (کم‌ریسک)"
 
-    # ۵. بخش پنجم: شبیه‌سازی سناریوی بازگشت (Retention Simulation)
-    # تخمین اثرگذاری کمپین‌های پیشنهادی
-    estimated_recovered = int(high_risk_count * 0.35)  # فرض بازگشت ۳۵ درصد با مداخله هوش مصنوعی
+            churn_data.append({
+                'name': m['name'],
+                'phone': m['phone'],
+                'days_since_last_checkin': days_absent,
+                'risk_level': risk_level
+            })
 
-    # ۶. بخش ششم: پیشنهادها و اکشن‌پلن عملیاتی (AI Action Plan)
-    recommendations = []
-    if high_risk_count > 0:
-        recommendations.append(f"ارسال پیامک تخفیف تمدید برای {high_risk_count} عضو در معرض خطر ریزش شدید.")
-    if avg_checkins < 5:
-        recommendations.append("برگزاری برنامه‌های انگیزشی یا مربی خصوصی برای افزایش میانگین تردد هفته.")
-    if not recommendations:
-        recommendations.append("وضعیت تردد و ماندگاری اعضا در سطح مطلوب قرار دارد.")
+        df_churn = pd.DataFrame(churn_data)
+        # فقط نمایش اعضایی که غیبت دارند (ریسک متوسط و بالا)
+        return df_churn[df_churn['days_since_last_checkin'] >= 7]
 
-    return {
-        "total_members": total_members,
-        "active_members": active_members,
-        "churn_rate": churn_rate,
-        "avg_checkins": avg_checkins,
-        "high_risk_df": high_risk_df,
-        "segmentation": {
-            "High Risk": high_risk_count,
-            "Medium Risk": med_risk_count,
-            "Low Risk": low_risk_count
-        },
-        "simulation": {
-            "current_high_risk": high_risk_count,
-            "estimated_recovered": estimated_recovered,
-            "projected_high_risk": high_risk_count - estimated_recovered
-        },
-        "recommendations": recommendations,
-        "full_df": df
-    }
+    except Exception as e:
+        return pd.DataFrame()
