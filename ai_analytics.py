@@ -1,125 +1,117 @@
 import pandas as pd
+import numpy as np
+import warnings
 from datetime import datetime
-from db_manager import supabase
+from db_manager import supabase, get_all_members, get_attendance_logs
 
-def get_hourly_occupancy(club_id):
-    """محاسبه ساعات شلوغی باشگاه بر اساس تردد اعضا (club_id)"""
+warnings.filterwarnings('ignore', category=UserWarning)
+
+def get_hourly_occupancy(club_id: str):
+    """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز برای یک باشگاه مشخص"""
     try:
-        res = (
-            supabase.table("attendance")
-            .select("check_in_time")
-            .eq("club_id", club_id)
-            .execute()
-        )
-        data = res.data if res.data else []
+        attendance_logs = get_attendance_logs(club_id)
         
-        if not data:
-            return pd.DataFrame(columns=['hour', 'checkin_count'])
+        if not attendance_logs:
+            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0] * 24})
         
-        df = pd.DataFrame(data)
-        # تبدیل تاریخ به حالت Naive بدون Timezone جهت جلوگیری از خطاهای محاسباتی
-        df['check_in_time'] = pd.to_datetime(df['check_in_time']).dt.tz_localize(None)
-        df['hour'] = df['check_in_time'].dt.hour
+        df = pd.DataFrame(attendance_logs)
+        df['checkin_datetime'] = pd.to_datetime(df['check_in_time'])
+        df['hour'] = df['checkin_datetime'].dt.hour
         
         hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
-        hourly_counts = hourly_counts.sort_values(by='hour').reset_index(drop=True)
-        return hourly_counts
+        
+        all_hours = pd.DataFrame({'hour': list(range(0, 24))})
+        result = pd.merge(all_hours, hourly_counts, on='hour', how='left').fillna(0)
+        result['checkin_count'] = result['checkin_count'].astype(int)
+        
+        return result
     except Exception as e:
-        return pd.DataFrame(columns=['hour', 'checkin_count'])
+        return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0] * 24})
 
-def predict_churn_risk(club_id):
+
+def predict_churn_risk(club_id: str):
     """
-    شناسایی اعضای در معرض ریزش بر اساس club_id.
-    ابتدا سعی می‌کند داده‌ها را از نمای تحلیلی دیتابیس (vw_memberchurnanalytics) دریافت کند،
-    در غیر این صورت محاسبات را به‌صورت مستقیم در پایتون انجام می‌دهد.
+    تحلیل هوشمند ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده)
+    مطابق منطق دقیق لوکال (امتیاز ۰ تا ۱۰۰)
     """
     try:
-        # ۱. تلاش برای دریافت داده از SQL View در صورت وجود در دیتابیس
-        try:
-            view_res = (
-                supabase.table("vw_memberchurnanalytics")
-                .select("*")
-                .eq("club_id", club_id)
-                .execute()
-            )
-            if view_res.data and len(view_res.data) > 0:
-                return pd.DataFrame(view_res.data)
-        except Exception:
-            pass  # در صورت عدم وجود View، به بخش محاسبه مستقیم پایتون منتقل می‌شود
-
-        # ۲. محاسبه مستقیم در پایتون
-        members_res = (
-            supabase.table("members")
-            .select("id, name, phone, join_date")
-            .eq("club_id", club_id)
-            .execute()
-        )
-        members = members_res.data if members_res.data else []
-        if not members:
-            return pd.DataFrame()
-
-        attendance_res = (
-            supabase.table("attendance")
-            .select("member_id, check_in_time")
-            .eq("club_id", club_id)
-            .order("check_in_time", desc=True)
-            .execute()
-        )
-        attendance = attendance_res.data if attendance_res.data else []
+        raw_members = get_all_members(club_id)
+        attendance_logs = get_attendance_logs(club_id)
         
-        # نگاشت آخرین تردد به هر عضو
+        if not raw_members:
+            return pd.DataFrame()
+        
+        # استخراج آخرین زمان حضور هر عضو
         last_checkin_map = {}
-        for log in attendance:
+        for log in attendance_logs:
             m_id = log.get('member_id')
-            if m_id and m_id not in last_checkin_map:
+            check_time_str = log.get('check_in_time')
+            if m_id and check_time_str and m_id not in last_checkin_map:
                 try:
-                    dt_val = pd.to_datetime(log['check_in_time'])
-                    if hasattr(dt_val, 'tz_localize') and dt_val.tzinfo is not None:
-                        dt_val = dt_val.tz_localize(None)
-                    last_checkin_map[m_id] = dt_val
+                    dt = pd.to_datetime(check_time_str)
+                    last_checkin_map[m_id] = dt
                 except Exception:
                     pass
 
         now = datetime.now()
-        churn_data = []
+        processed_members = []
 
-        for m in members:
-            m_id = m['id']
+        for m in raw_members:
+            m_id = m.get('id')
+            name = m.get('name', '')
+            phone = m.get('phone', '')
+            sessions = m.get('subscription_days', 0) or 0
+            join_date_str = m.get('join_date')
+
+            # ۱. محاسبه روزهای غیبت
             if m_id in last_checkin_map:
-                days_absent = (now - last_checkin_map[m_id]).days
-            else:
-                join_str = m.get('join_date')
-                if join_str:
-                    try:
-                        join_dt = datetime.strptime(join_str, "%Y-%m-%d")
-                        days_absent = (now - join_dt).days
-                    except Exception:
-                        days_absent = 30
-                else:
+                last_dt = last_checkin_map[m_id]
+                days_absent = max(0, (now - last_dt.tz_localize(None)).days)
+            elif join_date_str:
+                try:
+                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d")
+                    days_absent = max(0, (now - join_dt).days)
+                except Exception:
                     days_absent = 30
-
-            days_absent = max(0, days_absent)
-
-            # تعیین سطح ریسک همگام با بخش تحلیلی app.py
-            if days_absent >= 20:
-                risk_level = "🔴 ریسک بالا"
-            elif days_absent >= 10:
-                risk_level = "🟡 ریسک متوسط"
             else:
-                risk_level = "🟢 پایین (Low)"
+                days_absent = 30
 
-            churn_data.append({
+            # ۲. محاسبه امتیاز هوشمند ریسک (مطابق منطق شما)
+            # تاثیر روزهای غیبت (تا سقف ۷۰ امتیاز برای ۱۴ روز غیبت)
+            risk_from_days = min(days_absent * 5, 70)
+
+            # تاثیر جلسات رو به اتمام (تا سقف ۳۰ امتیاز)
+            if sessions == 0:
+                risk_from_sessions = 30
+            elif sessions <= 3:
+                risk_from_sessions = 15
+            else:
+                risk_from_sessions = 0
+
+            churn_risk_score = float(risk_from_days + risk_from_sessions)
+
+            # ۳. تبدیل امتیاز عددی به برچسب
+            if churn_risk_score >= 70:
+                risk_level = 'بالا (High)'
+            elif churn_risk_score >= 40:
+                risk_level = 'متوسط (Medium)'
+            else:
+                risk_level = 'پایین (Low)'
+
+            processed_members.append({
                 'id': m_id,
                 'member_id': m_id,
-                'name': m.get('name', '-'),
-                'phone': m.get('phone', '-'),
+                'name': name,
+                'phone': phone,
+                'remaining_sessions': sessions,
                 'days_since_last_checkin': days_absent,
                 'days_absent': days_absent,
+                'churn_risk_score': churn_risk_score,
                 'risk_level': risk_level
             })
 
-        df_churn = pd.DataFrame(churn_data)
-        return df_churn
+        df = pd.DataFrame(processed_members)
+        return df
 
     except Exception as e:
         return pd.DataFrame()
