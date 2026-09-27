@@ -41,20 +41,24 @@ def generate_dummy_data_for_manager(username):
         sub_status = random.choices(['active', 'expired'], weights=[0.80, 0.20])[0]
 
         if sub_status == 'expired':
-            days_active = random.randint(45, 60)
+            # کاربران منقضی‌شده (تاریخ عضویت بیش از ۳۰ روز قبل و جلسات صفر)
+            days_active = random.randint(35, 60)
             subscription_days = 0
-            last_checkin_days_ago = random.randint(15, min(35, days_active))
+            last_checkin_days_ago = random.randint(15, days_active)
         else:
-            days_active = random.randint(1, 28)
-            subscription_days = random.randint(5, 30)
-            
+            # کاربران فعال (جلسات بین ۱ تا ۲۴ جلسه)
+            subscription_days = random.randint(1, 24)
             pattern = random.choices(['regular', 'at_risk', 'churning'], weights=[0.60, 0.25, 0.15])[0]
+            
             if pattern == 'regular':
+                days_active = random.randint(1, 28)
                 last_checkin_days_ago = random.randint(0, min(3, days_active))
             elif pattern == 'at_risk':
-                last_checkin_days_ago = random.randint(min(6, days_active), min(10, days_active))
-            else:
-                last_checkin_days_ago = random.randint(min(12, days_active), min(25, days_active))
+                days_active = random.randint(10, 28)
+                last_checkin_days_ago = random.randint(6, min(12, days_active))
+            else:  # churning (ریسک بالا)
+                days_active = random.randint(18, 28)
+                last_checkin_days_ago = random.randint(15, days_active)
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
 
@@ -74,6 +78,7 @@ def generate_dummy_data_for_manager(username):
 
         member_id = member_res.data[0]['id']
 
+        # ثبت آخرین حضور
         hour = random.choice(all_hours)
         minute = random.randint(0, 59)
         last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
@@ -84,6 +89,7 @@ def generate_dummy_data_for_manager(username):
             "club_id": club_id
         }]
 
+        # ثبت ترددهای قبلی جهت شبیه‌سازی سابقه
         used_sessions = random.randint(2, 8)
         for _ in range(used_sessions):
             min_past = last_checkin_days_ago + 1
