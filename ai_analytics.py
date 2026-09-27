@@ -1,16 +1,11 @@
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from db_manager import supabase
 
 def get_hourly_occupancy(club_id):
-    """محاسبه ساعات شلوغی باشگاه بر اساس club_id"""
+    """محاسبه نمودار شلوغی باشگاه"""
     try:
-        res = (
-            supabase.table("attendance")
-            .select("check_in_time")
-            .eq("club_id", club_id)
-            .execute()
-        )
+        res = supabase.table("attendance").select("check_in_time").eq("club_id", club_id).execute()
         data = res.data if res.data else []
         
         if not data:
@@ -20,26 +15,18 @@ def get_hourly_occupancy(club_id):
         df['check_in_time'] = pd.to_datetime(df['check_in_time'])
         df['hour'] = df['check_in_time'].dt.hour
         
-        hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
-        return hourly_counts
-    except Exception as e:
+        return df.groupby('hour').size().reset_index(name='checkin_count')
+    except Exception:
         return pd.DataFrame(columns=['hour', 'checkin_count'])
 
 def predict_churn_risk(club_id):
-    """شناسایی اعضای در معرض ریزش بر اساس club_id"""
+    """محاسبه امتیاز ریسک ریزش اعضا (۰ تا ۱۰۰) شبیه کد لوکال"""
     try:
-        # ۱. دریافت لیست اعضای فعال باشگاه
-        members_res = (
-            supabase.table("members")
-            .select("id, name, phone")
-            .eq("club_id", club_id)
-            .execute()
-        )
+        members_res = supabase.table("members").select("*").eq("club_id", club_id).execute()
         members = members_res.data if members_res.data else []
         if not members:
             return pd.DataFrame()
 
-        # ۲. دریافت آخرین تاریخ تردد اعضا
         attendance_res = (
             supabase.table("attendance")
             .select("member_id, check_in_time")
@@ -49,7 +36,6 @@ def predict_churn_risk(club_id):
         )
         attendance = attendance_res.data if attendance_res.data else []
         
-        # نگاشت آخرین تردد به هر عضو
         last_checkin_map = {}
         for log in attendance:
             m_id = log['member_id']
@@ -61,29 +47,36 @@ def predict_churn_risk(club_id):
 
         for m in members:
             m_id = m['id']
-            if m_id in last_checkin_map:
-                days_absent = (now - last_checkin_map[m_id].replace(tzinfo=None)).days
-            else:
-                days_absent = 30  # اگر اصلاً تردد نداشته، ۳۰ روز غیبت فرض می‌شود
+            days_absent = (now - last_checkin_map[m_id].replace(tzinfo=None)).days if m_id in last_checkin_map else 30
+            sessions_left = m.get('sessions_left', 0)
+            sub_days = m.get('subscription_days', 0)
 
-            # تعیین سطح ریسک ریزش
-            if days_absent >= 14:
-                risk_level = "🔴 ریسک بالا"
-            elif days_absent >= 7:
+            # فرمول دقیق لوکال برای محاسبه Churn Score (۰ تا ۱۰۰)
+            absence_score = min(days_absent * 4, 60)
+            session_score = 20 if sessions_left <= 2 else 0
+            day_score = 20 if sub_days <= 5 else 0
+            
+            churn_score = absence_score + session_score + day_score
+
+            if churn_score >= 70:
+                risk_level = "🔴 ریسک بسیار بالا"
+            elif churn_score >= 40:
                 risk_level = "🟡 ریسک متوسط"
             else:
-                risk_level = "🟢 فعال (کم‌ریسک)"
+                risk_level = "🟢 فعال / کم‌ریسک"
 
             churn_data.append({
                 'name': m['name'],
                 'phone': m['phone'],
-                'days_since_last_checkin': days_absent,
+                'days_absent': days_absent,
+                'sessions_left': sessions_left,
+                'sub_days': sub_days,
+                'churn_score': churn_score,
                 'risk_level': risk_level
             })
 
         df_churn = pd.DataFrame(churn_data)
-        # فقط نمایش اعضایی که غیبت دارند (ریسک متوسط و بالا)
-        return df_churn[df_churn['days_since_last_checkin'] >= 7]
+        return df_churn.sort_values(by='churn_score', ascending=False)
 
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()

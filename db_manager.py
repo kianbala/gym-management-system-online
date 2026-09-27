@@ -5,10 +5,8 @@ import streamlit as st
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# بارگذاری متغیرهای محیطی از فایل .env محلی (در صورت وجود)
 load_dotenv()
 
-# ابتدا بررسی متغیرها از Streamlit Secrets و در صورت عدم وجود از .env محلی
 SUPABASE_URL = None
 SUPABASE_KEY = None
 
@@ -25,15 +23,16 @@ if not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
-def add_member(name, phone, national_id, subscription_days, club_id):
-    """ثبت عضو جدید در جدول members با شناسه باشگاه"""
+# --- ۱. مدیریت اعضا ---
+def add_member(name, phone, national_id, subscription_days, sessions_left, club_id):
+    """ثبت عضو جدید همراه با روزها و تعداد جلسات اولیه"""
     try:
         data = {
             "name": name.strip(),
             "phone": phone.strip(),
             "national_id": national_id.strip(),
             "subscription_days": int(subscription_days),
+            "sessions_left": int(sessions_left),
             "status": "active",
             "join_date": datetime.now().date().isoformat(),
             "club_id": club_id
@@ -44,90 +43,113 @@ def add_member(name, phone, national_id, subscription_days, club_id):
         st.error(f"خطا در ثبت عضو: {e}")
         return False
 
-
 def get_all_members(club_id):
-    """دریافت لیست تمامی اعضای یک باشگاه مشخص"""
+    """دریافت لیست اعضای یک باشگاه"""
     try:
-        res = supabase.table("members").select("*").eq("club_id", club_id).execute()
+        res = supabase.table("members").select("*").eq("club_id", club_id).order("id", desc=True).execute()
         return res.data if res.data else []
     except Exception as e:
         st.error(f"خطا در دریافت لیست اعضا: {e}")
         return []
 
-
 def search_member(search_query, club_id):
-    """جستجوی عضو بر اساس نام یا کد ملی در باشگاه مشخص"""
+    """جستجوی عضو بر اساس نام یا کد ملی"""
     try:
         res = supabase.table("members").select("*").eq("club_id", club_id).execute()
         data = res.data if res.data else []
         query = search_query.strip().lower()
-        
-        filtered = [
+        return [
             m for m in data 
             if query in m.get("name", "").lower() or query in m.get("national_id", "")
         ]
-        return filtered
     except Exception as e:
         st.error(f"خطا در جستجو: {e}")
         return []
 
-
-def update_subscription(member_id, add_days, club_id):
-    """افزایش تعداد روزهای اعتبار اشتراک عضو"""
+def delete_member(member_id, club_id):
+    """حذف عضو و سوابق تردد"""
     try:
-        # ۱. دریافت اطلاعات فعلی کاربر
-        res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
-        if not res.data:
-            return False
-        
-        current_days = res.data[0].get("subscription_days", 0)
-        new_days = current_days + int(add_days)
-
-        # ۲. به‌روزرسانی روزها و فعال‌سازی مجدد
-        update_res = supabase.table("members").update({
-            "subscription_days": new_days,
-            "status": "active"
-        }).eq("id", member_id).eq("club_id", club_id).execute()
-        
-        return bool(update_res.data)
+        supabase.table("attendance").delete().eq("member_id", member_id).eq("club_id", club_id).execute()
+        res = supabase.table("members").delete().eq("id", member_id).eq("club_id", club_id).execute()
+        return bool(res.data)
     except Exception as e:
-        st.error(f"خطا در تمدید اشتراک: {e}")
+        st.error(f"خطا در حذف عضو: {e}")
         return False
 
-
-def record_attendance(member_id, club_id):
-    """ثبت تاریخچه تردد (ورود) ورزشکار"""
+# --- ۲. مدیریت بسته‌ها ---
+def add_package(title, sessions, duration_days, price, club_id):
+    """ثبت تعریف بسته جدید"""
     try:
+        data = {
+            "title": title.strip(),
+            "sessions": int(sessions),
+            "duration_days": int(duration_days),
+            "price": float(price),
+            "club_id": club_id
+        }
+        res = supabase.table("packages").insert(data).execute()
+        return bool(res.data)
+    except Exception as e:
+        st.error(f"خطا در ایجاد بسته: {e}")
+        return False
+
+def get_all_packages(club_id):
+    """دریافت بسته‌های فعال باشگاه"""
+    try:
+        res = supabase.table("packages").select("*").eq("club_id", club_id).execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"خطا در دریافت بسته‌ها: {e}")
+        return []
+
+def assign_package_to_member(member_id, package_id, club_id):
+    """تخصیص بسته به عضو (افزایش جلسات و روزهای اعتبار)"""
+    try:
+        pkg_res = supabase.table("packages").select("*").eq("id", package_id).eq("club_id", club_id).execute()
+        mem_res = supabase.table("members").select("*").eq("id", member_id).eq("club_id", club_id).execute()
+        
+        if not pkg_res.data or not mem_res.data:
+            return False
+            
+        pkg = pkg_res.data[0]
+        mem = mem_res.data[0]
+
+        new_days = mem.get("subscription_days", 0) + pkg["duration_days"]
+        new_sessions = mem.get("sessions_left", 0) + pkg["sessions"]
+
+        update_res = supabase.table("members").update({
+            "subscription_days": new_days,
+            "sessions_left": new_sessions,
+            "status": "active"
+        }).eq("id", member_id).eq("club_id", club_id).execute()
+
+        return bool(update_res.data)
+    except Exception as e:
+        st.error(f"خطا در تخصیص بسته: {e}")
+        return False
+
+# --- ۳. مدیریت تردد ---
+def record_attendance(member_id, club_id):
+    """ثبت ورود و کسر یک جلسه از حساب عضو"""
+    try:
+        mem_res = supabase.table("members").select("sessions_left").eq("id", member_id).eq("club_id", club_id).execute()
+        if not mem_res.data:
+            return False, "عضو یافت نشد."
+
+        sessions = mem_res.data[0].get("sessions_left", 0)
+        if sessions <= 0:
+            return False, "تعداد جلسات عضو به پایان رسیده است!"
+
+        # کسر جلسه
+        supabase.table("members").update({"sessions_left": sessions - 1}).eq("id", member_id).eq("club_id", club_id).execute()
+        
+        # ثبت ورود
         data = {
             "member_id": member_id,
             "check_in_time": datetime.now().isoformat(),
             "club_id": club_id
         }
         res = supabase.table("attendance").insert(data).execute()
-        return bool(res.data)
+        return True, "ورود با موفقیت ثبت شد و ۱ جلسه کسر گردید."
     except Exception as e:
-        st.error(f"خطا در ثبت تردد: {e}")
-        return False
-
-
-def get_attendance_logs(club_id):
-    """دریافت سوابق تردد اعضای باشگاه"""
-    try:
-        res = supabase.table("attendance").select("*, members(name, phone)").eq("club_id", club_id).order("check_in_time", desc=True).execute()
-        return res.data if res.data else []
-    except Exception as e:
-        st.error(f"خطا در دریافت سوابق تردد: {e}")
-        return []
-
-
-def delete_member(member_id, club_id):
-    """حذف کامل عضو و سوابق تردد مرتبط از باشگاه"""
-    try:
-        # حذف ترددها
-        supabase.table("attendance").delete().eq("member_id", member_id).eq("club_id", club_id).execute()
-        # حذف خود عضو
-        res = supabase.table("members").delete().eq("id", member_id).eq("club_id", club_id).execute()
-        return bool(res.data)
-    except Exception as e:
-        st.error(f"خطا در حذف عضو: {e}")
-        return False
+        return False, f"خطا در ثبت تردد: {e}"
