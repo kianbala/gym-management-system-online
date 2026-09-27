@@ -1,14 +1,12 @@
 import os
 from datetime import datetime
-import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# بارگذاری متغیرهای محیطی از فایل .env محلی (در صورت وجود)
 load_dotenv()
 
-# ابتدا بررسی متغیرها از Streamlit Secrets و در صورت عدم وجود از .env محلی
+# فراخوانی کلیدها از Secrets یا فایل env
 SUPABASE_URL = None
 SUPABASE_KEY = None
 
@@ -48,7 +46,7 @@ def add_member(name, phone, national_id, subscription_days, club_id):
 def get_all_members(club_id):
     """دریافت لیست تمامی اعضای یک باشگاه مشخص"""
     try:
-        res = supabase.table("members").select("*").eq("club_id", club_id).execute()
+        res = supabase.table("members").select("*").eq("club_id", club_id).order("id", desc=True).execute()
         return res.data if res.data else []
     except Exception as e:
         st.error(f"خطا در دریافت لیست اعضا: {e}")
@@ -75,15 +73,13 @@ def search_member(search_query, club_id):
 def update_subscription(member_id, add_days, club_id):
     """افزایش تعداد روزهای اعتبار اشتراک عضو"""
     try:
-        # ۱. دریافت اطلاعات فعلی کاربر
         res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
         if not res.data:
             return False
         
-        current_days = res.data[0].get("subscription_days", 0)
+        current_days = res.data[0].get("subscription_days", 0) or 0
         new_days = current_days + int(add_days)
 
-        # ۲. به‌روزرسانی روزها و فعال‌سازی مجدد
         update_res = supabase.table("members").update({
             "subscription_days": new_days,
             "status": "active"
@@ -121,11 +117,8 @@ def get_attendance_logs(club_id):
 
 
 def delete_member(member_id, club_id):
-    """حذف کامل عضو و سوابق تردد مرتبط از باشگاه"""
+    """حذف عضو (ترددها به صورت خودکار توسط CASCADE حذف می‌شوند)"""
     try:
-        # حذف ترددها
-        supabase.table("attendance").delete().eq("member_id", member_id).eq("club_id", club_id).execute()
-        # حذف خود عضو
         res = supabase.table("members").delete().eq("id", member_id).eq("club_id", club_id).execute()
         return bool(res.data)
     except Exception as e:

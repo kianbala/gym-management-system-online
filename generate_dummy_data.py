@@ -13,7 +13,6 @@ LAST_NAMES = [
 ]
 
 def generate_dummy_data_for_manager(username):
-    # 1. Fetch manager record from 'users' table using the unique username
     user_res = supabase.table("users").select("*").eq("username", username).execute()
     if not user_res.data:
         print(f"❌ Error: Manager with username '{username}' was not found in database!")
@@ -22,7 +21,7 @@ def generate_dummy_data_for_manager(username):
     user_data = user_res.data[0]
     club_id = user_data.get("club_id", username)
 
-    print(f"⏳ Adding 30 sample members and attendance history for manager: '{username}' (Club: '{club_id}') ...")
+    print(f"⏳ Generating 30 sample members and attendance history for manager: '{username}' (Club: '{club_id}') ...")
     now = datetime.now()
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
@@ -39,7 +38,6 @@ def generate_dummy_data_for_manager(username):
         national_id = f"{1000000000 + (unique_seed * 123) % 899999999}"[:10]
         phone_number = f"0912{random.randint(1000000, 9999999)}"
 
-        # 🎯 Determine subscription status and join date
         sub_status = random.choices(['active', 'expired'], weights=[0.80, 0.20])[0]
 
         if sub_status == 'expired':
@@ -55,12 +53,11 @@ def generate_dummy_data_for_manager(username):
                 last_checkin_days_ago = random.randint(0, min(3, days_active))
             elif pattern == 'at_risk':
                 last_checkin_days_ago = random.randint(min(6, days_active), min(10, days_active))
-            else: # churning
+            else:
                 last_checkin_days_ago = random.randint(min(12, days_active), min(25, days_active))
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
 
-        # 2. Insert member into Supabase
         member_data = {
             "name": full_name,
             "phone": phone_number,
@@ -77,7 +74,6 @@ def generate_dummy_data_for_manager(username):
 
         member_id = member_res.data[0]['id']
 
-        # 3. Insert last check-in
         hour = random.choice(all_hours)
         minute = random.randint(0, 59)
         last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
@@ -88,7 +84,6 @@ def generate_dummy_data_for_manager(username):
             "club_id": club_id
         }]
 
-        # 4. Insert random past attendance records
         used_sessions = random.randint(2, 8)
         for _ in range(used_sessions):
             min_past = last_checkin_days_ago + 1
@@ -108,12 +103,9 @@ def generate_dummy_data_for_manager(username):
         supabase.table("attendance").insert(attendance_records).execute()
         added_count += 1
 
-    print(f"✅ Successfully created {added_count} sample members and attendance history for manager '{username}' (Club: '{club_id}') in Supabase!")
+    print(f"✅ Created {added_count} sample members & attendance logs for manager '{username}' (Club: '{club_id}')!")
 
 if __name__ == "__main__":
-    # Enter the manager's username (e.g., admin) to generate data for their specific club
-    target_username = input("Enter the manager's username (e.g., admin): ").strip()
+    target_username = input("Enter manager username (e.g. admin): ").strip()
     if target_username:
         generate_dummy_data_for_manager(target_username)
-    else:
-        print("❌ Username was not provided.")

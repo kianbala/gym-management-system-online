@@ -7,15 +7,13 @@ from db_manager import (
     search_member, 
     update_subscription, 
     delete_member, 
-    record_attendance, 
-    get_attendance_logs
+    record_attendance
 )
 from ai_analytics import get_hourly_occupancy, predict_churn_risk
 from auth import authenticate_user, add_user
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
-# استایل RTL
 st.markdown("""
     <style>
     html, body, [class*="css"] {
@@ -33,7 +31,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- مدیریت نشست کاربر و بازیابی از URL Query Parameters ---
+# مدیریت نشست کاربر
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
@@ -41,21 +39,19 @@ if 'username' not in st.session_state:
 if 'club_id' not in st.session_state:
     st.session_state.club_id = ""
 
-# بازیابی نشست هنگام رفرش صفحه از طریق پارامترهای آدرس مرورگر
 query_params = st.query_params
 if not st.session_state.logged_in and "user" in query_params:
     st.session_state.logged_in = True
     st.session_state.username = query_params["user"]
     st.session_state.club_id = query_params.get("club", query_params["user"])
 
-# --- فرم ورود و ثبت‌نام اولیه ---
+# صفحه ورود و ثبت‌نام اولیه
 if not st.session_state.logged_in:
     st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         tab_login, tab_register = st.tabs(["🔐 ورود به سیستم", "👤 ثبت‌نام مدیر/باشگاه جدید"])
         
-        # تب ورود
         with tab_login:
             with st.form("login_form"):
                 username_input = st.text_input("نام کاربری")
@@ -65,13 +61,11 @@ if not st.session_state.logged_in:
                 if submit_login:
                     if username_input and password_input:
                         success, club_id = authenticate_user(username_input, password_input)
-
                         if success:
                             st.session_state.logged_in = True
                             st.session_state.username = username_input
                             st.session_state.club_id = club_id
                             
-                            # 🔄 تنظیم پارامترهای آدرس مرورگر جهت حفظ نشست هنگام رفرش
                             st.query_params["user"] = username_input
                             st.query_params["club"] = club_id
                             
@@ -83,7 +77,6 @@ if not st.session_state.logged_in:
                     else:
                         st.warning("لطفاً اطلاعات را کامل وارد کنید.")
                         
-        # تب ثبت‌نام
         with tab_register:
             with st.form("register_form"):
                 reg_username = st.text_input("نام کاربری مدیر")
@@ -94,23 +87,21 @@ if not st.session_state.logged_in:
                 if submit_reg:
                     if reg_username.strip() and reg_password.strip() and reg_club_name.strip():
                         if add_user(reg_username, reg_password, club_name=reg_club_name):
-                            st.success(f"باشگاه '{reg_club_name}' با مدیریت '{reg_username}' با موفقیت ساخته شد! اکنون می‌توانید وارد شوید.")
+                            st.success(f"باشگاه '{reg_club_name}' با مدیریت '{reg_username}' ایجاد شد! اکنون می‌توانید وارد شوید.")
                         else:
-                            st.error("خطا در ساخت حساب (احتمالاً این نام کاربری قبلاً ثبت شده است).")
+                            st.error("خطا در ساخت حساب (نام کاربری تکراری است).")
                     else:
-                        st.warning("لطفاً تمام فیلدها را پر کنید.")
+                        st.warning("لطفاً تمامی فیلدها را پر کنید.")
 
-# --- محتوای اصلی ---
 else:
     st.sidebar.write(f"👤 **مدیر آنلاین:** {st.session_state.username}")
     st.sidebar.write(f"🏢 **باشگاه:** `{st.session_state.club_id}`")
     
-    # 🚪 خروج از سیستم و پاک‌سازی URL
     if st.sidebar.button("🚪 خروج"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.club_id = ""
-        st.query_params.clear()  # پاک‌سازی کامل پارامترهای URL
+        st.query_params.clear()
         st.rerun()
 
     st.sidebar.markdown("---")
@@ -148,6 +139,8 @@ else:
             })
             if 'club_id' in df_display.columns:
                 df_display = df_display.drop(columns=['club_id'])
+            if 'created_at' in df_display.columns:
+                df_display = df_display.drop(columns=['created_at'])
             st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
             st.info("هیچ عضوی برای این باشگاه یافت نشد.")
@@ -168,7 +161,7 @@ else:
             if submit:
                 if name.strip() and phone.strip() and national_id.strip():
                     if add_member(name, phone, national_id, subscription_days, club_id):
-                        st.success("عضو جدید با موفقیت برای باشگاه شما ثبت شد.")
+                        st.success("عضو جدید با موفقیت ثبت شد.")
                         time.sleep(1)
                         st.rerun()
                     else:
@@ -205,7 +198,7 @@ else:
             
             if st.button("🔄 افزایش اعتبار", type="primary"):
                 if update_subscription(member_id, add_days, club_id):
-                    st.success("اعتبار عضو با موفقیت به روز شد.")
+                    st.success("اعتبار عضو با موفقیت به‌روزرسانی شد.")
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -214,17 +207,16 @@ else:
     # ۵. تحلیل هوش مصنوعی
     elif choice == "📊 تحلیل هوش مصنوعی":
         st.subheader("🤖 تحلیل رفتاری و شلوغی باشگاه")
-        try:
-            hourly_df = get_hourly_occupancy(club_id)
-            churn_df = predict_churn_risk(club_id)
-        except TypeError:
-            hourly_df = get_hourly_occupancy()
-            churn_df = predict_churn_risk()
+        hourly_df = get_hourly_occupancy(club_id)
+        churn_df = predict_churn_risk(club_id)
         
         col1, col2 = st.columns(2)
         with col1:
             st.write("### 📈 نمودار ساعات شلوغی")
-            st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
+            if not hourly_df.empty:
+                st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
+            else:
+                st.info("هنوز ترددی ثبت نشده است.")
         with col2:
             st.write("### ⚠️ تحلیل ریسک ریزش اعضا")
             if not churn_df.empty:
@@ -235,6 +227,8 @@ else:
                     'risk_level': 'سطح ریسک'
                 })
                 st.dataframe(display_churn, use_container_width=True, hide_index=True)
+            else:
+                st.success("هیچ عضوی در وضعیت ریسک ریزش قرار ندارد.")
 
     # ۶. مدیریت و حذف
     elif choice == "مدیریت و حذف":
@@ -264,7 +258,7 @@ else:
             if submit_user:
                 if new_username.strip() and new_password.strip() and new_club_name.strip():
                     if add_user(new_username, new_password, club_name=new_club_name):
-                        st.success(f"حساب باشگاه ({new_club_name}) با مدیر ({new_username}) با موفقیت ایجاد شد.")
+                        st.success(f"حساب باشگاه ({new_club_name}) برای مدیر ({new_username}) ساخته شد.")
                     else:
                         st.error("خطا در ساخت حساب.")
                 else:

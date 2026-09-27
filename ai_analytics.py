@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from db_manager import supabase
 
 def get_hourly_occupancy(club_id):
@@ -28,7 +28,7 @@ def get_hourly_occupancy(club_id):
 def predict_churn_risk(club_id):
     """شناسایی اعضای در معرض ریزش بر اساس club_id"""
     try:
-        # ۱. دریافت لیست اعضای فعال باشگاه
+        # ۱. دریافت لیست اعضای باشگاه
         members_res = (
             supabase.table("members")
             .select("id, name, phone")
@@ -54,7 +54,11 @@ def predict_churn_risk(club_id):
         for log in attendance:
             m_id = log['member_id']
             if m_id not in last_checkin_map:
-                last_checkin_map[m_id] = pd.to_datetime(log['check_in_time'])
+                # تبدیل تاریخ تردد به حالت Naive بدون Timezone
+                dt_val = pd.to_datetime(log['check_in_time'])
+                if hasattr(dt_val, 'tz_localize') and dt_val.tzinfo is not None:
+                    dt_val = dt_val.tz_localize(None)
+                last_checkin_map[m_id] = dt_val
 
         now = datetime.now()
         churn_data = []
@@ -62,11 +66,10 @@ def predict_churn_risk(club_id):
         for m in members:
             m_id = m['id']
             if m_id in last_checkin_map:
-                days_absent = (now - last_checkin_map[m_id].replace(tzinfo=None)).days
+                days_absent = (now - last_checkin_map[m_id]).days
             else:
-                days_absent = 30  # اگر اصلاً تردد نداشته، ۳۰ روز غیبت فرض می‌شود
+                days_absent = 30  # اگر تردد نداشته، ۳۰ روز غیبت فرض می‌شود
 
-            # تعیین سطح ریسک ریزش
             if days_absent >= 14:
                 risk_level = "🔴 ریسک بالا"
             elif days_absent >= 7:
@@ -82,7 +85,6 @@ def predict_churn_risk(club_id):
             })
 
         df_churn = pd.DataFrame(churn_data)
-        # فقط نمایش اعضایی که غیبت دارند (ریسک متوسط و بالا)
         return df_churn[df_churn['days_since_last_checkin'] >= 7]
 
     except Exception as e:
