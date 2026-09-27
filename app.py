@@ -512,7 +512,7 @@ else:
         raw_members = get_all_members(club_id)
         attendance_logs = get_attendance_logs(club_id)
         
-        total_members_count = len(raw_members) if raw_members else 1
+        total_members_count = len(raw_members) if raw_members else 0
         total_checkins = len(attendance_logs) if attendance_logs else (int(hourly_df['checkin_count'].sum()) if not hourly_df.empty else 0)
         
         if not hourly_df.empty and 'checkin_count' in hourly_df.columns:
@@ -525,24 +525,25 @@ else:
         med_risk_cnt = 0
         low_risk_cnt = 0
 
-        if not churn_df.empty:
-            for _, row in churn_df.iterrows():
-                r_level = str(row.get('risk_level', '')).lower()
-                days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
-                if 'high' in r_level or 'بالا' in r_level or days_abs >= 25:
-                    high_risk_cnt += 1
-                elif 'med' in r_level or 'متوسط' in r_level or days_abs >= 14:
-                    med_risk_cnt += 1
-                else:
-                    low_risk_cnt += 1
+        if total_members_count > 0:
+            if not churn_df.empty:
+                for _, row in churn_df.iterrows():
+                    r_level = str(row.get('risk_level', '')).lower()
+                    days_abs = row.get('days_since_last_checkin', row.get('days_absent', 0)) or 0
+                    if 'high' in r_level or 'بالا' in r_level or days_abs >= 25:
+                        high_risk_cnt += 1
+                    elif 'med' in r_level or 'متوسط' in r_level or days_abs >= 14:
+                        med_risk_cnt += 1
+                    else:
+                        low_risk_cnt += 1
 
-            low_risk_cnt = max(low_risk_cnt, total_members_count - high_risk_cnt - med_risk_cnt)
-        else:
-            low_risk_cnt = total_members_count
+                low_risk_cnt = max(0, total_members_count - high_risk_cnt - med_risk_cnt)
+            else:
+                low_risk_cnt = total_members_count
 
-        high_pct = (high_risk_cnt / total_members_count) * 100 if total_members_count else 0
-        med_pct = (med_risk_cnt / total_members_count) * 100 if total_members_count else 0
-        low_pct = (low_risk_cnt / total_members_count) * 100 if total_members_count else 0
+        high_pct = (high_risk_cnt / total_members_count) * 100 if total_members_count > 0 else 0
+        med_pct = (med_risk_cnt / total_members_count) * 100 if total_members_count > 0 else 0
+        low_pct = (low_risk_cnt / total_members_count) * 100 if total_members_count > 0 else 0
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
