@@ -6,12 +6,17 @@ from supabase import create_client, Client
 
 load_dotenv()
 
+# -------------------------------------------------------------
+# تنظیم و دریافت کلیدهای اتصال به Supabase
+# -------------------------------------------------------------
 SUPABASE_URL = None
 SUPABASE_KEY = None
 
 try:
-    SUPABASE_URL = st.secrets.get("SUPABASE_URL")
-    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+    if "SUPABASE_URL" in st.secrets:
+        SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    if "SUPABASE_KEY" in st.secrets:
+        SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 except Exception:
     pass
 
@@ -20,11 +25,20 @@ if not SUPABASE_URL:
 if not SUPABASE_KEY:
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        st.error(f"خطا در ایجاد اتصال Supabase: {e}")
+else:
+    st.error("⚠️ کلیدهای اتصال به Supabase (SUPABASE_URL و SUPABASE_KEY) یافت نشدند.")
 
 
-def add_member(name, phone, national_id, club_id, subscription_days=30):
-    """ثبت عضو جدید با میزان اعتبار پیش‌فرض ۳۰ روز و بررسی یکتایی کد ملی"""
+def add_member(name, phone, national_id, club_id, subscription_days=12):
+    """ثبت عضو جدید با میزان تعداد جلسات ورزشی و بررسی یکتایی کد ملی"""
+    if not supabase:
+        return False, "اتصال به دیتابیس برقرار نیست."
     try:
         data = {
             "name": name.strip(),
@@ -38,14 +52,16 @@ def add_member(name, phone, national_id, club_id, subscription_days=30):
         res = supabase.table("members").insert(data).execute()
         return True, "عضو جدید با موفقیت ثبت شد."
     except Exception as e:
-        err_msg = str(e)
-        if "duplicate key" in err_msg or "unique constraint" in err_msg:
+        err_msg = str(e).lower()
+        if any(term in err_msg for term in ["duplicate", "unique", "23505", "already exists"]):
             return False, "⚠️ این کد ملی قبلاً برای این باشگاه ثبت شده است."
         return False, f"خطا در ثبت عضو: {e}"
 
 
 def get_all_members(club_id):
     """دریافت لیست تمامی اعضای یک باشگاه مشخص"""
+    if not supabase:
+        return []
     try:
         res = supabase.table("members").select("*").eq("club_id", club_id).order("id", desc=True).execute()
         return res.data if res.data else []
@@ -55,7 +71,9 @@ def get_all_members(club_id):
 
 
 def search_member(search_query, club_id):
-    """جستجوی عضو بر اساس نام یا کد ملی در باشگاه مشخص"""
+    """جستجوی جامع عضو بر اساس نام، کد ملی، شماره تماس یا کد عضویت"""
+    if not supabase:
+        return []
     try:
         res = supabase.table("members").select("*").eq("club_id", club_id).execute()
         data = res.data if res.data else []
@@ -63,7 +81,10 @@ def search_member(search_query, club_id):
         
         filtered = [
             m for m in data 
-            if query in m.get("name", "").lower() or query in m.get("national_id", "")
+            if query in str(m.get("name", "")).lower() 
+            or query in str(m.get("national_id", ""))
+            or query in str(m.get("phone", ""))
+            or query in str(m.get("id", ""))
         ]
         return filtered
     except Exception as e:
@@ -71,18 +92,23 @@ def search_member(search_query, club_id):
         return []
 
 
-def update_subscription(member_id, add_days, club_id):
-    """افزایش تعداد روزهای اعتبار اشتراک عضو"""
+def update_subscription(member_id, sessions, club_id, overwrite=True):
+    """ثبت یا تمدید بسته/جلسات برای ورزشکار و بروزرسانی تاریخ شروع به امروز"""
+    if not supabase:
+        return False
     try:
-        res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
-        if not res.data:
-            return False
+        today_str = datetime.now().date().isoformat()
         
-        current_days = res.data[0].get("subscription_days", 0) or 0
-        new_days = current_days + int(add_days)
+        if overwrite:
+            new_sessions = int(sessions)
+        else:
+            res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
+            current_sessions = (res.data[0].get("subscription_days", 0) or 0) if res.data else 0
+            new_sessions = current_sessions + int(sessions)
 
         update_res = supabase.table("members").update({
-            "subscription_days": new_days,
+            "subscription_days": new_sessions,
+            "join_date": today_str,
             "status": "active"
         }).eq("id", member_id).eq("club_id", club_id).execute()
         
@@ -94,6 +120,8 @@ def update_subscription(member_id, add_days, club_id):
 
 def record_attendance(member_id, club_id):
     """ثبت تاریخچه تردد (ورود) ورزشکار"""
+    if not supabase:
+        return False
     try:
         data = {
             "member_id": member_id,
@@ -109,6 +137,8 @@ def record_attendance(member_id, club_id):
 
 def get_attendance_logs(club_id):
     """دریافت سوابق تردد اعضای باشگاه"""
+    if not supabase:
+        return []
     try:
         res = supabase.table("attendance").select("*, members(name, phone)").eq("club_id", club_id).order("check_in_time", desc=True).execute()
         return res.data if res.data else []
@@ -118,7 +148,9 @@ def get_attendance_logs(club_id):
 
 
 def delete_member(member_id, club_id):
-    """حذف عضو (ترددها به صورت خودکار توسط CASCADE حذف می‌شوند)"""
+    """حذف عضو و کلیه داده‌های مربوط به آن"""
+    if not supabase:
+        return False
     try:
         res = supabase.table("members").delete().eq("id", member_id).eq("club_id", club_id).execute()
         return bool(res.data)
