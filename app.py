@@ -150,24 +150,36 @@ else:
         st.subheader("➕ ثبت عضو جدید")
         with st.form("add_member_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
-            with col1:
-                name = st.text_input("نام و نام خانوادگی")
-                phone = st.text_input("شماره تماس")
             with col2:
-                national_id = st.text_input("کد ملی")
-                subscription_days = st.number_input("تعداد روزهای اعتبار اولیه", min_value=1, value=30)
+                first_name = st.text_input("نام")
+                last_name = st.text_input("نام خانوادگی")
+            with col1:
+                national_id = st.text_input("کد ملی (۱۰ رقمی)")
+                phone = st.text_input("شماره تماس (۱۱ رقمی)")
                 
-            submit = st.form_submit_button("ثبت در دیتابیس", type="primary")
+            submit = st.form_submit_button("ثبت عضو", type="primary")
+            
             if submit:
-                if name.strip() and phone.strip() and national_id.strip():
-                    if add_member(name, phone, national_id, subscription_days, club_id):
-                        st.success("عضو جدید با موفقیت ثبت شد.")
+                f_name = first_name.strip()
+                l_name = last_name.strip()
+                n_id = national_id.strip()
+                ph = phone.strip()
+                
+                if not (f_name and l_name and n_id and ph):
+                    st.warning("لطفاً تمامی فیلدها را پر کنید.")
+                elif not (n_id.isdigit() and len(n_id) == 10):
+                    st.error("❌ کد ملی باید دقیقاً ۱۰ رقم عددی باشد.")
+                elif not (ph.isdigit() and len(ph) == 11):
+                    st.error("❌ شماره تماس باید دقیقاً ۱۱ رقم عددی باشد.")
+                else:
+                    full_name = f"{f_name} {l_name}"
+                    success, message = add_member(full_name, ph, n_id, club_id)
+                    if success:
+                        st.success(message)
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("خطا در ثبت عضو.")
-                else:
-                    st.warning("لطفاً همه فیلدها را پر کنید.")
+                        st.error(message)
 
     # ۳. ثبت تردد
     elif choice == "ثبت تردد":

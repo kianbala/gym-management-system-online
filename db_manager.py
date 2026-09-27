@@ -6,7 +6,6 @@ from supabase import create_client, Client
 
 load_dotenv()
 
-# فراخوانی کلیدها از Secrets یا فایل env
 SUPABASE_URL = None
 SUPABASE_KEY = None
 
@@ -24,8 +23,8 @@ if not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-def add_member(name, phone, national_id, subscription_days, club_id):
-    """ثبت عضو جدید در جدول members با شناسه باشگاه"""
+def add_member(name, phone, national_id, club_id, subscription_days=30):
+    """ثبت عضو جدید با میزان اعتبار پیش‌فرض ۳۰ روز و بررسی یکتایی کد ملی"""
     try:
         data = {
             "name": name.strip(),
@@ -37,10 +36,12 @@ def add_member(name, phone, national_id, subscription_days, club_id):
             "club_id": club_id
         }
         res = supabase.table("members").insert(data).execute()
-        return bool(res.data)
+        return True, "عضو جدید با موفقیت ثبت شد."
     except Exception as e:
-        st.error(f"خطا در ثبت عضو: {e}")
-        return False
+        err_msg = str(e)
+        if "duplicate key" in err_msg or "unique constraint" in err_msg:
+            return False, "⚠️ این کد ملی قبلاً برای این باشگاه ثبت شده است."
+        return False, f"خطا در ثبت عضو: {e}"
 
 
 def get_all_members(club_id):
