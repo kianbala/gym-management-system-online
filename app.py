@@ -123,7 +123,7 @@ else:
         "داشبورد و اعضا", 
         "ثبت عضو جدید", 
         "ثبت تردد", 
-        "تمدید اشتراک", 
+        "تخصیص بسته", 
         "📊 تحلیل هوش مصنوعی", 
         "مدیریت و حذف",
         "⚙️ ساخت باشگاه/مدیر جدید"
@@ -192,9 +192,9 @@ else:
 
             # تعیین نوع بسته
             if sub_days > 12:
-                package_type = "بسته ۲۴ جلسه ماهانه"
+                package_type = "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"
             else:
-                package_type = "بسته ۱۲ جلسه ماهانه"
+                package_type = "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان"
 
             # وضعیت: اگر ۳۰ روز گذشته باشد یا جلسات ۰ شده باشد -> EXPIRED
             if is_expired_by_time or sub_days <= 0:
@@ -271,7 +271,10 @@ else:
             with col1:
                 national_id = st.text_input("کد ملی (۱۰ رقمی)")
                 phone = st.text_input("شماره تماس (۱۱ رقمی)")
-                package_choice = st.selectbox("انتخاب نوع بسته ماهانه:", ["بسته ۱۲ جلسه ماهانه", "بسته ۲۴ جلسه ماهانه"])
+                package_choice = st.selectbox(
+                    "انتخاب نوع بسته ورزشی:",
+                    ["بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان", "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"]
+                )
                 
             submit = st.form_submit_button("ثبت عضو", type="primary")
             
@@ -371,34 +374,102 @@ else:
             st.info("هیچ ورزشکار فعالی با این مشخصات یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۴: تمدید اشتراک
+    # بخش ۴: تخصیص بسته جدید به عضو
     # ---------------------------------------------------------
-    elif choice == "تمدید اشتراک":
-        st.subheader("💳 تمدید اعتبار اشتراک (تمدید یک‌ماهه)")
-        members = get_all_members(club_id)
-        if members:
-            options = {f"👤 {m['name']} | کد: {m['id']} | جلسات فعلی: {m['subscription_days']}": m['id'] for m in members}
-            selected_label = st.selectbox("انتخاب عضو جهت تمدید:", list(options.keys()))
-            member_id = options[selected_label]
-            
-            package_choice = st.selectbox("شارژ بسته جدید:", ["بسته ۱۲ جلسه ماهانه (۳۰ روز)", "بسته ۲۴ جلسه ماهانه (۳۰ روز)"])
-            add_sessions = 12 if "12" in package_choice else 24
-            
-            if st.button("🔄 تمدید اشتراک", type="primary"):
+    elif choice == "تخصیص بسته":
+        st.subheader("💳 اختصاص بسته جدید به عضو")
+        
+        raw_members = get_all_members(club_id)
+        attendance_logs = get_attendance_logs(club_id)
+        now_date = datetime.now().date()
+
+        # محاسبه آخرین تاریخ حضور هر عضو
+        last_checkin_map = {}
+        for log in attendance_logs:
+            m_id = log.get('member_id')
+            check_time_str = log.get('check_in_time')
+            if m_id and check_time_str and m_id not in last_checkin_map:
                 try:
-                    # صفر کردن/تنظیم مجدد تعداد جلسات و به‌روزرسانی تاریخ عضویت/تمدید به امروز
-                    today_str = datetime.now().date().isoformat()
+                    dt = datetime.fromisoformat(check_time_str.replace('Z', '+00:00'))
+                    last_checkin_map[m_id] = dt.date()
+                except Exception:
+                    pass
+
+        member_options = {}
+        status_warning_map = {}
+
+        for m in raw_members:
+            m_id = m.get("id")
+            name = m.get("name", "")
+            national_id = m.get("national_id", "")
+            phone = m.get("phone", "")
+            sub_days = m.get("subscription_days", 0) or 0
+            join_date_str = m.get("join_date")
+
+            is_expired = False
+            if join_date_str:
+                try:
+                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    if now_date > (join_dt + timedelta(days=30)):
+                        is_expired = True
+                except Exception:
+                    pass
+
+            if is_expired or sub_days <= 0:
+                status_label = "🟢 مجاز به تمدید (اتمام جلسات یا انقضا)"
+                status_warning_map[m_id] = None
+            else:
+                status_label = f"🔴 دارای اشتراک فعال ({sub_days} جلسه باقی‌مانده)"
+                status_warning_map[m_id] = f"🔴 دارای اشتراک فعال ({sub_days} جلسه باقی‌مانده). تا زمانی که جلسات به اتمام نرسد یا انقضا نیاید امکان ثبت بسته جدید نیست."
+
+            label = f"👤 {name} | 📱 {phone} | 🆔 کد ملی: {national_id} | {status_label}"
+            member_options[label] = m_id
+
+        search_query = st.text_input(
+            "🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):",
+            placeholder="مثلاً: حسین، 0912..."
+        )
+
+        filtered_labels = list(member_options.keys())
+        if search_query.strip():
+            q = search_query.strip().lower()
+            filtered_labels = [lbl for lbl in filtered_labels if q in lbl.lower()]
+
+        st.write(f"🔍 **تعداد {len(filtered_labels)} مورد یافت شد:**")
+
+        if filtered_labels:
+            selected_label = st.selectbox("انتخاب عضو:", filtered_labels)
+            selected_member_id = member_options[selected_label]
+
+            warning_msg = status_warning_map.get(selected_member_id)
+            if warning_msg:
+                st.warning(warning_msg)
+
+            packages = {
+                "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان": 12,
+                "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان": 24
+            }
+
+            selected_package_label = st.selectbox("انتخاب بسته ورزشی:", list(packages.keys()))
+            sessions_to_add = packages[selected_package_label]
+
+            can_renew = warning_msg is None
+            if st.button("💳 ثبت و اختصاص بسته", type="primary", disabled=not can_renew):
+                try:
+                    today_str = now_date.isoformat()
                     supabase.table("members").update({
-                        "subscription_days": add_sessions,
+                        "subscription_days": sessions_to_add,
                         "join_date": today_str,
                         "status": "active"
-                    }).eq("id", member_id).eq("club_id", club_id).execute()
-                    
-                    st.success("اشتراک عضو به مدت ۳۰ روز شارژ شد.")
+                    }).eq("id", selected_member_id).eq("club_id", club_id).execute()
+
+                    st.success(f"بسته جدید ({sessions_to_add} جلسه) با موفقیت به ورزشکار اختصاص یافت.")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
-                    st.error(f"خطا در تمدید اشتراک: {e}")
+                    st.error(f"خطا در اختصاص بسته: {e}")
+        else:
+            st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
     # بخش ۵: تحلیل هوش مصنوعی
