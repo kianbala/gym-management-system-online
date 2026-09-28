@@ -8,10 +8,12 @@ from db_manager import (
     get_all_members, 
     search_member, 
     update_subscription, 
+    decrement_subscription,
+    clear_member_subscription,
     delete_member, 
     record_attendance,
     get_attendance_logs,
-    supabase
+    reset_club_data
 )
 from ai_analytics import get_hourly_occupancy, predict_churn_risk
 from auth import authenticate_user, add_user
@@ -203,7 +205,8 @@ else:
             
             if join_date_str:
                 try:
-                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    clean_join = join_date_str.split('T')[0]
+                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
                     expire_dt = join_dt + timedelta(days=30)
                     expire_str = expire_dt.isoformat()
                     if now_date > expire_dt:
@@ -217,7 +220,8 @@ else:
                 days_absent = (now_date - last_checkin_map[m_id]).days
             elif join_date_str:
                 try:
-                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    clean_join = join_date_str.split('T')[0]
+                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
                     days_absent = (now_date - join_dt).days
                 except Exception:
                     days_absent = 0
@@ -293,7 +297,7 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۲: ثبت عضو جدید (تغییر یافته: حذف انتخاب بسته)
+    # بخش ۲: ثبت عضو جدید
     # ---------------------------------------------------------
     elif choice == "ثبت عضو جدید":
         st.subheader("➕ ثبت عضو جدید")
@@ -347,7 +351,8 @@ else:
             is_expired = False
             if join_date_str:
                 try:
-                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    clean_join = join_date_str.split('T')[0]
+                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
                     if now_date > (join_dt + timedelta(days=30)):
                         is_expired = True
                 except Exception:
@@ -385,15 +390,13 @@ else:
             
             if st.button("🟢 ثبت ورود", type="primary"):
                 if record_attendance(member_id, club_id):
-                    current_sub = next((m.get("subscription_days", 0) for m in filtered_members if m.get("id") == member_id), 0)
-                    new_sub = max(0, current_sub - 1)
-                    
-                    try:
-                        supabase.table("members").update({"subscription_days": new_sub}).eq("id", member_id).execute()
+                    if decrement_subscription(member_id, club_id):
+                        current_sub = next((m.get("subscription_days", 0) for m in filtered_members if m.get("id") == member_id), 1)
+                        new_sub = max(0, current_sub - 1)
                         st.success(f"ورود با موفقیت ثبت شد. (جلسات باقیمانده: {new_sub})")
                         time.sleep(1)
                         st.rerun()
-                    except Exception as e:
+                    else:
                         st.success("ورود ثبت شد اما در کسر جلسه خطایی رخ داد.")
                 else:
                     st.error("خطا در ثبت ورود.")
@@ -407,19 +410,7 @@ else:
         st.subheader("💳 اختصاص بسته جدید به عضو")
         
         raw_members = get_all_members(club_id)
-        attendance_logs = get_attendance_logs(club_id)
         now_date = datetime.now().date()
-
-        last_checkin_map = {}
-        for log in attendance_logs:
-            m_id = log.get('member_id')
-            check_time_str = log.get('check_in_time')
-            if m_id and check_time_str and m_id not in last_checkin_map:
-                try:
-                    dt = datetime.fromisoformat(check_time_str.replace('Z', '+00:00'))
-                    last_checkin_map[m_id] = dt.date()
-                except Exception:
-                    pass
 
         member_options = {}
         status_warning_map = {}
@@ -435,7 +426,8 @@ else:
             is_expired = False
             if join_date_str:
                 try:
-                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d").date()
+                    clean_join = join_date_str.split('T')[0]
+                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
                     if now_date > (join_dt + timedelta(days=30)):
                         is_expired = True
                 except Exception:
@@ -481,19 +473,12 @@ else:
 
             can_renew = warning_msg is None
             if st.button("💳 ثبت و اختصاص بسته", type="primary", disabled=not can_renew):
-                try:
-                    today_str = now_date.isoformat()
-                    supabase.table("members").update({
-                        "subscription_days": sessions_to_add,
-                        "join_date": today_str,
-                        "status": "active"
-                    }).eq("id", selected_member_id).eq("club_id", club_id).execute()
-
+                if update_subscription(selected_member_id, sessions_to_add, club_id, overwrite=True):
                     st.success(f"بسته جدید ({sessions_to_add} جلسه) با موفقیت به ورزشکار اختصاص یافت.")
                     time.sleep(1)
                     st.rerun()
-                except Exception as e:
-                    st.error(f"خطا در اختصاص بسته: {e}")
+                else:
+                    st.error("خطا در اختصاص بسته.")
         else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
@@ -682,13 +667,12 @@ else:
                 st.selectbox("اشتراکی که قصد حذف آن را دارید انتخاب کنید:", [package_desc])
 
                 if st.button("❌ حذف این اشتراک"):
-                    try:
-                        supabase.table("members").update({"subscription_days": 0, "status": "expired"}).eq("id", m_id).eq("club_id", club_id).execute()
+                    if clear_member_subscription(m_id, club_id):
                         st.success("اشتراک عضو با موفقیت صفر گردید.")
                         time.sleep(1)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"خطا در صفر کردن اشتراک: {e}")
+                    else:
+                        st.error("خطا در صفر کردن اشتراک.")
             else:
                 st.info("این عضو در حال حاضر اشتراک فعالی ندارد.")
         else:
@@ -734,18 +718,16 @@ else:
                 time.sleep(0.5)
                 st.rerun()
             else:
-                try:
-                    supabase.table("attendance").delete().eq("club_id", club_id).execute()
-                    supabase.table("members").delete().eq("club_id", club_id).execute()
+                if reset_club_data(club_id):
                     st.session_state.reset_pending = False
                     st.session_state.pop('reset_start_time', None)
                     st.success("تمامی داده‌ها و اعضای این باشگاه با موفقیت حذف و ریست گردید.")
                     time.sleep(1.5)
                     st.rerun()
-                except Exception as e:
+                else:
                     st.session_state.reset_pending = False
                     st.session_state.pop('reset_start_time', None)
-                    st.error(f"خطا در ریست دیتابیس: {e}")
+                    st.error("خطا در ریست کامل دیتابیس.")
 
     # ---------------------------------------------------------
     # بخش ۷: ایجاد حساب جدید

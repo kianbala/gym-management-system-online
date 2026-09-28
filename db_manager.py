@@ -40,12 +40,13 @@ def add_member(name, phone, national_id, club_id, subscription_days=0):
     if not supabase:
         return False, "اتصال به دیتابیس برقرار نیست."
     try:
+        sub_count = int(subscription_days)
         data = {
             "name": name.strip(),
             "phone": phone.strip(),
             "national_id": national_id.strip(),
-            "subscription_days": int(subscription_days),
-            "status": "active" if int(subscription_days) > 0 else "inactive",
+            "subscription_days": sub_count,
+            "status": "active" if sub_count > 0 else "inactive",
             "join_date": datetime.now().date().isoformat(),
             "club_id": club_id
         }
@@ -81,10 +82,10 @@ def search_member(search_query, club_id):
         
         filtered = [
             m for m in data 
-            if query in str(m.get("name", "")).lower() 
-            or query in str(m.get("national_id", ""))
-            or query in str(m.get("phone", ""))
-            or query in str(m.get("id", ""))
+            if query in str(m.get("name", "") or "").lower() 
+            or query in str(m.get("national_id", "") or "")
+            or query in str(m.get("phone", "") or "")
+            or query in str(m.get("id", "") or "")
         ]
         return filtered
     except Exception as e:
@@ -106,15 +107,56 @@ def update_subscription(member_id, sessions, club_id, overwrite=True):
             current_sessions = (res.data[0].get("subscription_days", 0) or 0) if res.data else 0
             new_sessions = current_sessions + int(sessions)
 
+        new_status = "active" if new_sessions > 0 else "expired"
+
         update_res = supabase.table("members").update({
             "subscription_days": new_sessions,
             "join_date": today_str,
-            "status": "active"
+            "status": new_status
         }).eq("id", member_id).eq("club_id", club_id).execute()
         
         return bool(update_res.data)
     except Exception as e:
         st.error(f"خطا در تمدید اشتراک: {e}")
+        return False
+
+
+def decrement_subscription(member_id, club_id):
+    """کسر یک جلسه از ورزشکار پس از ثبت ورود"""
+    if not supabase:
+        return False
+    try:
+        res = supabase.table("members").select("subscription_days").eq("id", member_id).eq("club_id", club_id).execute()
+        if not res.data:
+            return False
+        
+        current_sub = res.data[0].get("subscription_days", 0) or 0
+        new_sub = max(0, current_sub - 1)
+        new_status = "active" if new_sub > 0 else "expired"
+
+        update_res = supabase.table("members").update({
+            "subscription_days": new_sub,
+            "status": new_status
+        }).eq("id", member_id).eq("club_id", club_id).execute()
+        
+        return bool(update_res.data)
+    except Exception as e:
+        st.error(f"خطا در کسر جلسه: {e}")
+        return False
+
+
+def clear_member_subscription(member_id, club_id):
+    """صفر کردن اشتراک عضو بدون حذف حساب کاربری"""
+    if not supabase:
+        return False
+    try:
+        res = supabase.table("members").update({
+            "subscription_days": 0,
+            "status": "expired"
+        }).eq("id", member_id).eq("club_id", club_id).execute()
+        return bool(res.data)
+    except Exception as e:
+        st.error(f"خطا در صفر کردن اشتراک: {e}")
         return False
 
 
@@ -148,12 +190,28 @@ def get_attendance_logs(club_id):
 
 
 def delete_member(member_id, club_id):
-    """حذف عضو و کلیه داده‌های مربوط به آن"""
+    """حذف کامل عضو به همراه کلیه سوابق تردد مرتبط (جلوگیری از خطای کلید خارجی)"""
     if not supabase:
         return False
     try:
+        # ۱. ابتدا حذف ترددهای عضو از جدول attendance
+        supabase.table("attendance").delete().eq("member_id", member_id).eq("club_id", club_id).execute()
+        # ۲. سپس حذف عضو از جدول members
         res = supabase.table("members").delete().eq("id", member_id).eq("club_id", club_id).execute()
         return bool(res.data)
     except Exception as e:
         st.error(f"خطا در حذف عضو: {e}")
+        return False
+
+
+def reset_club_data(club_id):
+    """حذف تمامی اعضا و ترددهای مربوط به یک باشگاه مشخص"""
+    if not supabase:
+        return False
+    try:
+        supabase.table("attendance").delete().eq("club_id", club_id).execute()
+        supabase.table("members").delete().eq("club_id", club_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"خطا در پاکسازی دیتابیس: {e}")
         return False
