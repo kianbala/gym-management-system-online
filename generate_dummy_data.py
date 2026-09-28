@@ -13,10 +13,10 @@ LAST_NAMES = [
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
+# فقط دو بسته ۱۲ و ۲۴ جلسه‌ای مجاز هستند
 PACKAGES = [
     {"name": "اشتراک ۱۲ جلسه‌ای", "sessions": 12},
-    {"name": "اشتراک ۲۴ جلسه‌ای", "sessions": 24},
-    {"name": "اشتراک ماهانه آزاد", "sessions": 30}
+    {"name": "اشتراک ۲۴ جلسه‌ای", "sessions": 24}
 ]
 
 def generate_unique_national_id(existing_ids):
@@ -63,35 +63,35 @@ def generate_dummy_data_for_manager(username):
         pkg_name = pkg["name"]
         initial_sessions = pkg["sessions"]
 
-        if profile_type == 'no_package':   # ثبت اولیه و واقعاً بدون بسته
+        if profile_type == 'no_package':   # فاقد بسته
             sub_status = 'inactive'
             package_title = 'بدون بسته'
             days_active = random.randint(0, 10)
             num_attendances = 0
             last_checkin_days_ago = None
             remaining_sessions = 0
-        elif profile_type == 'expired':     # بسته داشته ولی منقضی شده
-            sub_status = 'expired'         # حروف کوچک اصلاح شد
+        elif profile_type == 'expired':     # بسته منقضی شده
+            sub_status = 'expired'
             package_title = pkg_name
             days_active = random.randint(32, 60)
             num_attendances = initial_sessions
             last_checkin_days_ago = random.randint(20, days_active)
             remaining_sessions = 0
-        elif profile_type == 'churning':
+        elif profile_type == 'churning':    # در حال ریزش (فعال)
             sub_status = 'active'
             package_title = pkg_name
             days_active = random.randint(15, 28)
-            num_attendances = random.randint(1, 3)
+            num_attendances = random.randint(1, min(3, initial_sessions - 1))
             last_checkin_days_ago = random.randint(14, days_active)
             remaining_sessions = max(1, initial_sessions - num_attendances)
-        elif profile_type == 'at_risk':
+        elif profile_type == 'at_risk':     # در معرض خطر (فعال)
             sub_status = 'active'
             package_title = pkg_name
             days_active = random.randint(10, 25)
-            num_attendances = random.randint(2, 6)
+            num_attendances = random.randint(2, min(6, initial_sessions - 1))
             last_checkin_days_ago = random.randint(6, 12)
             remaining_sessions = max(1, initial_sessions - num_attendances)
-        else:
+        else:                               # کاربر منظم (فعال)
             sub_status = 'active'
             package_title = pkg_name
             days_active = random.randint(1, 28)
@@ -99,6 +99,9 @@ def generate_dummy_data_for_manager(username):
             num_attendances = random.randint(1, max(1, max_possible_logs))
             last_checkin_days_ago = random.randint(0, min(3, days_active))
             remaining_sessions = max(1, initial_sessions - num_attendances)
+
+        # تضمین قطعی جهت عدم تجاوز جلسات باقی‌مانده از سقف ۱۲ یا ۲۴
+        remaining_sessions = min(remaining_sessions, initial_sessions)
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
 
