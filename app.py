@@ -146,7 +146,12 @@ if not st.session_state.logged_in:
 # -------------------------------------------------------------
 else:
     st.sidebar.write(f"👤 **مدیر آنلاین:** {st.session_state.username}")
-    st.sidebar.write(f"🏢 **باشگاه:** {st.session_state.club_id}")
+    
+    # نمایش نام باشگاه به صورت بزرگ‌تر و سبز رنگ
+    st.sidebar.markdown(
+        f"🏢 **باشگاه:** <span style='color: #00e676; font-size: 1.2rem; font-weight: bold;'>{st.session_state.club_id}</span>",
+        unsafe_allow_html=True
+    )
     
     if st.sidebar.button("🚪 خروج"):
         st.session_state.logged_in = False
