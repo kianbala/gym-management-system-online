@@ -41,15 +41,17 @@ def predict_churn_risk(club_id: str):
         if not raw_members:
             return pd.DataFrame()
         
-        # استخراج آخرین زمان حضور هر عضو به صورت ایمن و بدون تداخل Timezone
+        # استخراج جدیدترین (آخرین) زمان حضور هر عضو به صورت ایمن و بدون تداخل Timezone
         last_checkin_map = {}
         for log in attendance_logs:
             m_id = log.get('member_id')
             check_time_str = log.get('check_in_time')
-            if m_id and check_time_str and m_id not in last_checkin_map:
+            if m_id and check_time_str:
                 try:
                     dt = pd.to_datetime(check_time_str, utc=True).tz_localize(None)
-                    last_checkin_map[m_id] = dt
+                    # اگر عضو در مپ نباشد یا این تاریخ جدیدتر از قبلی باشد، به‌روزرسانی می‌شود
+                    if m_id not in last_checkin_map or dt > last_checkin_map[m_id]:
+                        last_checkin_map[m_id] = dt
                 except Exception:
                     pass
 
