@@ -201,7 +201,6 @@ else:
             sub_days = m.get("subscription_days", 0) or 0
             join_date_str = m.get("join_date")
 
-            # اگر کاربر دارای جلسات یا بسته فعال باشد
             if sub_days > 0:
                 if sub_days > 12:
                     package_type = "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"
@@ -225,14 +224,12 @@ else:
                 sessions_left = sub_days
                 status_str = "EXPIRED" if is_expired_by_time else "ACTIVE"
             else:
-                # برای اعضای جدید بدون بسته: تمام مشخصات بسته خط‌تیره نمایش داده می‌شوند
                 package_type = "-"
                 sub_code = "-"
                 sessions_left = "-"
                 expire_str = "-"
                 status_str = "فاقد اشتراک"
 
-            # محاسبه روزهای غیبت
             if m_id in last_checkin_map:
                 days_absent = (now_date - last_checkin_map[m_id]).days
             elif join_date_str:
@@ -488,32 +485,64 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند
+    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (فقط اعضای فعال)
     # ---------------------------------------------------------
     elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
-        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند")
+        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند (مخصوص اعضای فعال)")
         
         hourly_df = get_hourly_occupancy(club_id)
         churn_df = predict_churn_risk(club_id)
         raw_members = get_all_members(club_id)
         attendance_logs = get_attendance_logs(club_id)
         
-        total_members_count = len(raw_members) if raw_members else 0
-        total_checkins = len(attendance_logs) if attendance_logs else (int(hourly_df['checkin_count'].sum()) if not hourly_df.empty else 0)
+        now_date = datetime.now().date()
         
+        # ۱. جداسازی و استخراج اعضای فعال
+        active_members_ids = set()
+        for m in raw_members:
+            sub_days = m.get("subscription_days", 0) or 0
+            join_date_str = m.get("join_date")
+            
+            is_expired = False
+            if join_date_str:
+                try:
+                    clean_join = join_date_str.split('T')[0]
+                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
+                    if now_date > (join_dt + timedelta(days=30)):
+                        is_expired = True
+                except Exception:
+                    pass
+            
+            if sub_days > 0 and not is_expired:
+                active_members_ids.add(m.get("id"))
+
+        active_count = len(active_members_ids)
+        
+        # ۲. فیلتر کردن خروجی الگوریتم پیش‌بینی ریزش فقط برای اعضای فعال
+        active_churn_df = pd.DataFrame()
+        if not churn_df.empty:
+            # بررسی ستون آیدی عضو در دیتای هوش مصنوعی
+            id_col = 'id' if 'id' in churn_df.columns else ('member_id' if 'member_id' in churn_df.columns else None)
+            if id_col:
+                active_churn_df = churn_df[churn_df[id_col].isin(active_members_ids)].copy()
+            else:
+                active_churn_df = churn_df.copy()
+
+        # ۳. محاسبه آمار شلوغی
         if not hourly_df.empty and 'checkin_count' in hourly_df.columns:
             peak_row = hourly_df.loc[hourly_df['checkin_count'].idxmax()]
             peak_hour_str = f"ساعت {int(peak_row['hour']):02d}:00"
         else:
             peak_hour_str = "نامشخص"
 
+        # ۴. محاسبه سطوح ریسک اعضای فعال
         high_risk_cnt = 0
         med_risk_cnt = 0
         low_risk_cnt = 0
 
-        if total_members_count > 0:
-            if not churn_df.empty:
-                for _, row in churn_df.iterrows():
+        if active_count > 0:
+            if not active_churn_df.empty:
+                for _, row in active_churn_df.iterrows():
                     score = float(row.get('churn_risk_score', 0))
                     r_level = str(row.get('risk_level', '')).lower()
                     
@@ -524,17 +553,17 @@ else:
                     else:
                         low_risk_cnt += 1
 
-                low_risk_cnt = max(0, total_members_count - high_risk_cnt - med_risk_cnt)
+                low_risk_cnt = max(0, active_count - high_risk_cnt - med_risk_cnt)
             else:
-                low_risk_cnt = total_members_count
+                low_risk_cnt = active_count
 
-        high_pct = (high_risk_cnt / total_members_count) * 100 if total_members_count > 0 else 0
-        med_pct = (med_risk_cnt / total_members_count) * 100 if total_members_count > 0 else 0
-        low_pct = (low_risk_cnt / total_members_count) * 100 if total_members_count > 0 else 0
+        high_pct = (high_risk_cnt / active_count) * 100 if active_count > 0 else 0
+        med_pct = (med_risk_cnt / active_count) * 100 if active_count > 0 else 0
+        low_pct = (low_risk_cnt / active_count) * 100 if active_count > 0 else 0
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
-            st.metric("مجموع ترددها", f"{total_checkins} ورود")
+            st.metric("اعضای فعال", f"{active_count} نفر")
         with c2:
             st.metric("شلوغ‌ترین زمان", peak_hour_str)
         with c3:
@@ -557,13 +586,13 @@ else:
                 st.info("هنوز ترددی ثبت نشده است.")
 
         with col_table:
-            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (AI Engine)")
+            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضای فعال (AI Engine)")
             
             table_rows = []
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            if not churn_df.empty:
-                for _, row in churn_df.iterrows():
+            if not active_churn_df.empty:
+                for _, row in active_churn_df.iterrows():
                     m_id = row.get('id', row.get('member_id', '-'))
                     name = row.get('name', '-')
                     phone = row.get('phone', '-')
@@ -591,9 +620,9 @@ else:
                 df_table = df_table.sort_values(by="نمره ریسک (۰ تا ۱۰۰)", ascending=False)
                 st.dataframe(df_table, use_container_width=True, hide_index=True)
             else:
-                st.success("هیچ عضوی در وضعیت ریسک ریزش قرار ندارد.")
+                st.info("هیچ عضو فعالی در لیست تحلیلی قرار ندارد.")
 
-            st.caption("اطلاعات مستقیماً از الگوریتم پیش‌بینی هوشمند (ai_analytics) پردازش شده است.")
+            st.caption("محاسبات ریسک و درصدها فقط بر اساس اعضای دارای اشتراک فعال انجام شده است.")
 
     # ---------------------------------------------------------
     # بخش ۶: مدیریت و حذف
@@ -601,7 +630,6 @@ else:
     elif choice == "مدیریت و حذف":
         raw_members = get_all_members(club_id)
 
-        # ۱. حذف دستی یک عضو مشخص
         st.markdown("### 👤 حذف دستی یک عضو مشخص")
         search_del = st.text_input(
             "🔍 جستجوی عضو جهت حذف (بر اساس نام، شماره تماس یا کد ملی):",
@@ -639,7 +667,6 @@ else:
 
         st.markdown("---")
 
-        # ۲. حذف اشتراک‌های اضافی (بدون حذف عضو)
         st.markdown("### 🗑️ حذف اشتراک‌های اضافی (بدون حذف عضو)")
         search_sub = st.text_input(
             "🔍 جستجوی عضو جهت مدیریت/حذف اشتراک (نام، شماره تماس یا کد ملی):",
@@ -685,7 +712,6 @@ else:
 
         st.markdown("---")
 
-        # ۳. ریست کامل دیتابیس
         st.markdown("### ⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
         st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
 
