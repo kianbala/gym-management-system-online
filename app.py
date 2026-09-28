@@ -21,7 +21,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
 # -------------------------------------------------------------
-# استایل‌دهی سفارشی (اصلاح راست‌چین‌سازی عناوین و باگ سایدبار)
+# استایل‌دهی سفارشی (راست‌چین‌سازی کامل)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -31,7 +31,6 @@ st.markdown("""
         font-family: 'Tahoma', 'Vazirmatn', sans-serif;
     }
     
-    /* راست‌چین کردن اجباری تمامی باکس‌های متنی و عناوین Streamlit */
     div[data-testid="stMarkdownContainer"], 
     div[data-testid="stMarkdownContainer"] > *,
     .stMarkdown, h1, h2, h3, h4, h5, h6, p, label {
@@ -50,9 +49,6 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ---------------------------------------------------------
-       رفع کامل باگ لایه متنی / خط عمودی هنگام بستن سایدبار در RTL
-       --------------------------------------------------------- */
     section[data-testid="stSidebar"] {
         overflow: hidden !important;
     }
@@ -68,7 +64,6 @@ st.markdown("""
         z-index: 999999 !important;
     }
 
-    /* تنظیم اندازه فونت متغیرها و تیترهای کارت‌های آماری */
     [data-testid="stMetricValue"] {
         font-size: 1.1rem !important;
         font-weight: 700 !important;
@@ -83,7 +78,6 @@ st.markdown("""
         font-size: 0.72rem !important;
     }
 
-    /* تنظیم کارت‌های آماری */
     div[data-testid="metric-container"] {
         background-color: #1a1f2c;
         border: 1px solid #2e3545;
@@ -92,7 +86,6 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
-    /* اصلاح اندازه عناوین و زیرعنوان‌ها */
     h1, h2, h3 {
         font-size: 1.2rem !important;
         font-weight: 600 !important;
@@ -140,10 +133,8 @@ if not st.session_state.logged_in:
                             st.session_state.logged_in = True
                             st.session_state.username = username_input
                             st.session_state.club_id = club_id
-                            
                             st.query_params["user"] = username_input
                             st.query_params["club"] = club_id
-                            
                             st.success(f"خوش آمدید {username_input}!")
                             time.sleep(1)
                             st.rerun()
@@ -173,8 +164,6 @@ if not st.session_state.logged_in:
 # -------------------------------------------------------------
 else:
     st.sidebar.write(f"👤 **مدیر آنلاین:** {st.session_state.username}")
-    
-    # نمایش نام باشگاه به صورت بزرگ‌تر و سبز رنگ
     st.sidebar.markdown(
         f"🏢 **باشگاه:** <span style='color: #00e676; font-size: 1.2rem; font-weight: bold;'>{st.session_state.club_id}</span>",
         unsafe_allow_html=True
@@ -206,7 +195,6 @@ else:
     # بخش ۱: داشبورد و لیست اعضا
     # ---------------------------------------------------------
     if choice == "داشبورد و اعضا":
-        # عنوان اصلی راست‌چین شده
         st.markdown("<h3 style='text-align: right; margin-bottom: 1rem;'>📑 لیست اعضا و وضعیت اشتراک‌ها</h3>", unsafe_allow_html=True)
         
         raw_members = get_all_members(club_id)
@@ -285,8 +273,7 @@ else:
                 "جلسات باقی‌مانده": sessions_left,
                 "تاریخ انقضا": expire_str,
                 "وضعیت": status_str,
-                "روزهای غیبت": max(0, days_absent),
-                "is_active_flag": (status_str == "ACTIVE")
+                "روزهای غیبت": max(0, days_absent)
             })
 
         col_filter, col_search = st.columns([1, 2])
@@ -317,7 +304,6 @@ else:
                 or q in str(item["کد عضویت"])
             ]
 
-        # متن تعداد اعضا کاملاً راست‌چین‌شده
         st.markdown(
             f"<div style='text-align: right; font-weight: bold; margin-top: 10px; margin-bottom: 10px;'>📊 تعداد اعضای یافت شده: {len(filtered_list)} نفر</div>",
             unsafe_allow_html=True
@@ -336,7 +322,7 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۲: ثبت عضو جدید
+    # بخش ۲: ثبت عضو جدید (اصلاح‌شده با تاریخ سیستمی)
     # ---------------------------------------------------------
     elif choice == "ثبت عضو جدید":
         st.markdown("<h3 style='text-align: right;'>➕ ثبت عضو جدید</h3>", unsafe_allow_html=True)
@@ -365,6 +351,7 @@ else:
                     st.error("❌ شماره تماس باید دقیقاً ۱۱ رقم عددی باشد.")
                 else:
                     full_name = f"{f_name} {l_name}"
+                    # ثبت تاریخ عضویت بر اساس تاریخ جاری سیستم
                     success, message = add_member(full_name, ph, n_id, club_id, subscription_days=0)
                     if success:
                         st.success(message)
@@ -443,7 +430,7 @@ else:
             st.info("هیچ ورزشکار فعالی با این مشخصات یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۴: تخصیص بسته
+    # بخش ۴: تخصیص بسته (فقط ۱۲ یا ۲۴ جلسه‌ای)
     # ---------------------------------------------------------
     elif choice == "تخصیص بسته":
         st.markdown("<h3 style='text-align: right;'>💳 اختصاص بسته جدید به عضو</h3>", unsafe_allow_html=True)
@@ -477,7 +464,7 @@ else:
                 status_warning_map[m_id] = None
             else:
                 status_label = f"🔴 دارای اشتراک فعال ({sub_days} جلسه باقی‌مانده)"
-                status_warning_map[m_id] = f"🔴 دارای اشتراک فعال ({sub_days} جلسه باقی‌مانده). تا زمانی که جلسات به اتمام نرسد یا انقضا نیاید امکان ثبت بسته جدید نیست."
+                status_warning_map[m_id] = f"🔴 دارای اشتراک فعال ({sub_days} جلسه باقی‌مانده). تا زمانی که جلسات به اتمام نرسد یا ۳۰ روز منقضی نشود، امکان ثبت بسته جدید نیست."
 
             label = f"👤 {name} | 📱 {phone} | 🆔 کد ملی: {national_id} | {status_label}"
             member_options[label] = m_id
@@ -502,6 +489,7 @@ else:
             if warning_msg:
                 st.warning(warning_msg)
 
+            # محدودسازی دقیق بسته‌ها به ۱۲ و ۲۴ جلسه
             packages = {
                 "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان": 12,
                 "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان": 24
@@ -512,8 +500,9 @@ else:
 
             can_renew = warning_msg is None
             if st.button("💳 ثبت و اختصاص بسته", type="primary", disabled=not can_renew):
+                # به‌روزرسانی تعداد جلسات همراه با بازنشانی تاریخ شروع به تاریخ امروز
                 if update_subscription(selected_member_id, sessions_to_add, club_id, overwrite=True):
-                    st.success(f"بسته جدید ({sessions_to_add} جلسه) با موفقیت به ورزشکار اختصاص یافت.")
+                    st.success(f"بسته جدید ({sessions_to_add} جلسه) از تاریخ امروز برای ورزشکار فعال شد (انقضا: ۳۰ روز آینده).")
                     time.sleep(1)
                     st.rerun()
                 else:
@@ -522,7 +511,7 @@ else:
             st.info("هیچ عضوی با مشخصات وارد شده یافت نشد.")
 
     # ---------------------------------------------------------
-    # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (فقط اعضای فعال)
+    # بخش ۵: تحلیل و هوش مصنوعی
     # ---------------------------------------------------------
     elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
         st.markdown("<h3 style='text-align: right;'>🤖 ماژول تحلیلی و پیش‌بینی هوشمند (مخصوص اعضای فعال)</h3>", unsafe_allow_html=True)
@@ -534,7 +523,6 @@ else:
         
         now_date = datetime.now().date()
         
-        # ۱. جداسازی و استخراج اعضای فعال
         active_members_ids = set()
         for m in raw_members:
             sub_days = m.get("subscription_days", 0) or 0
@@ -555,13 +543,11 @@ else:
 
         active_count = len(active_members_ids)
         
-        # محاسبه مجموع کل ترددهای اعضای فعال
         active_attendance_count = sum(
             1 for log in attendance_logs 
             if log.get('member_id') in active_members_ids
         )
         
-        # ۲. فیلتر کردن خروجی الگوریتم پیش‌بینی ریزش فقط برای اعضای فعال
         active_churn_df = pd.DataFrame()
         if not churn_df.empty:
             id_col = 'id' if 'id' in churn_df.columns else ('member_id' if 'member_id' in churn_df.columns else None)
@@ -570,14 +556,12 @@ else:
             else:
                 active_churn_df = churn_df.copy()
 
-        # ۳. محاسبه آمار شلوغی
         if not hourly_df.empty and 'checkin_count' in hourly_df.columns:
             peak_row = hourly_df.loc[hourly_df['checkin_count'].idxmax()]
             peak_hour_str = f"ساعت {int(peak_row['hour']):02d}:00"
         else:
             peak_hour_str = "نامشخص"
 
-        # ۴. محاسبه سطوح ریسک اعضای فعال
         high_risk_cnt = 0
         med_risk_cnt = 0
         low_risk_cnt = 0
