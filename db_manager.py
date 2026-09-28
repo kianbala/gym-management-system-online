@@ -205,7 +205,7 @@ def delete_member(member_id, club_id):
 
 
 def reset_club_data(club_id):
-    """حذف تمامی اعضا و ترددهای مربوط به یک باشگاه مشخص و بازنشانی کامل داده‌ها"""
+    """حذف تمامی اعضا و ترددهای مربوط به یک باشگاه مشخص و بازنشانی کامل داده‌ها و شمارنده ID"""
     if not supabase:
         return False
     try:
@@ -215,9 +215,9 @@ def reset_club_data(club_id):
         # ۲. حذف کلیه اعضای ثبت شده باشگاه
         supabase.table("members").delete().eq("club_id", club_id).execute()
 
-        # ۳. تلاش برای ریست کردن شماره‌انداز ID به عدد ۱ از طریق RPC (در صورت وجود)
+        # ۳. فراخوانی تابع ریست شمارنده آیدی در Supabase
         try:
-            supabase.rpc("reset_members_sequence", {}).execute()
+            supabase.rpc("reset_members_sequence").execute()
         except Exception:
             pass
 
