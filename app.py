@@ -21,15 +21,24 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
 # -------------------------------------------------------------
-# استایل‌دهی سفارشی (اصلاح اندازه فونت‌ها، ظاهر کارت‌ها و باگ بستن سایدبار)
+# استایل‌دهی سفارشی (اصلاح راست‌چین‌سازی عناوین و باگ سایدبار)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
     html, body, [class*="css"] {
         direction: rtl;
-        text-align: right;
+        text-align: right !important;
         font-family: 'Tahoma', 'Vazirmatn', sans-serif;
     }
+    
+    /* راست‌چین کردن اجباری تمامی باکس‌های متنی و عناوین Streamlit */
+    div[data-testid="stMarkdownContainer"], 
+    div[data-testid="stMarkdownContainer"] > *,
+    .stMarkdown, h1, h2, h3, h4, h5, h6, p, label {
+        text-align: right !important;
+        direction: rtl !important;
+    }
+
     div[data-baseweb="select"] {
         direction: rtl !important;
         text-align: right !important;
@@ -113,7 +122,7 @@ if not st.session_state.logged_in and "user" in query_params:
 # ۱. صفحه ورود و ثبت‌نام
 # -------------------------------------------------------------
 if not st.session_state.logged_in:
-    st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
+    st.markdown("<h3 style='text-align: right;'>🔑 ورود یا ثبت‌نام باشگاه</h3>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         tab_login, tab_register = st.tabs(["🔐 ورود به سیستم", "👤 ثبت‌نام مدیر/باشگاه جدید"])
@@ -197,7 +206,8 @@ else:
     # بخش ۱: داشبورد و لیست اعضا
     # ---------------------------------------------------------
     if choice == "داشبورد و اعضا":
-        st.subheader("📑 لیست اعضا و وضعیت اشتراک‌ها")
+        # عنوان اصلی راست‌چین شده
+        st.markdown("<h3 style='text-align: right; margin-bottom: 1rem;'>📑 لیست اعضا و وضعیت اشتراک‌ها</h3>", unsafe_allow_html=True)
         
         raw_members = get_all_members(club_id)
         attendance_logs = get_attendance_logs(club_id)
@@ -307,7 +317,11 @@ else:
                 or q in str(item["کد عضویت"])
             ]
 
-        st.write(f"📊 **تعداد اعضای یافت شده:** {len(filtered_list)} نفر")
+        # متن تعداد اعضا کاملاً راست‌چین‌شده
+        st.markdown(
+            f"<div style='text-align: right; font-weight: bold; margin-top: 10px; margin-bottom: 10px;'>📊 تعداد اعضای یافت شده: {len(filtered_list)} نفر</div>",
+            unsafe_allow_html=True
+        )
 
         if filtered_list:
             df = pd.DataFrame(filtered_list)
@@ -325,7 +339,7 @@ else:
     # بخش ۲: ثبت عضو جدید
     # ---------------------------------------------------------
     elif choice == "ثبت عضو جدید":
-        st.subheader("➕ ثبت عضو جدید")
+        st.markdown("<h3 style='text-align: right;'>➕ ثبت عضو جدید</h3>", unsafe_allow_html=True)
         with st.form("add_member_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -363,7 +377,7 @@ else:
     # بخش ۳: ثبت تردد
     # ---------------------------------------------------------
     elif choice == "ثبت تردد":
-        st.subheader("🚪 ثبت ورود ورزشکار و کسر جلسه")
+        st.markdown("<h3 style='text-align: right;'>🚪 ثبت ورود ورزشکار و کسر جلسه</h3>", unsafe_allow_html=True)
         
         raw_members = get_all_members(club_id)
         now_date = datetime.now().date()
@@ -402,7 +416,7 @@ else:
                 or q in str(m.get("id", ""))
             ]
             
-        st.write(f"🔍 **تعداد {len(filtered_members)} مورد یافت شد:**")
+        st.markdown(f"<div style='text-align: right;'>🔍 <b>تعداد {len(filtered_members)} مورد یافت شد:</b></div>", unsafe_allow_html=True)
         
         if filtered_members:
             options = {
@@ -432,7 +446,7 @@ else:
     # بخش ۴: تخصیص بسته
     # ---------------------------------------------------------
     elif choice == "تخصیص بسته":
-        st.subheader("💳 اختصاص بسته جدید به عضو")
+        st.markdown("<h3 style='text-align: right;'>💳 اختصاص بسته جدید به عضو</h3>", unsafe_allow_html=True)
         
         raw_members = get_all_members(club_id)
         now_date = datetime.now().date()
@@ -478,7 +492,7 @@ else:
             q = search_query.strip().lower()
             filtered_labels = [lbl for lbl in filtered_labels if q in lbl.lower()]
 
-        st.write(f"🔍 **تعداد {len(filtered_labels)} مورد یافت شد:**")
+        st.markdown(f"<div style='text-align: right;'>🔍 <b>تعداد {len(filtered_labels)} مورد یافت شد:</b></div>", unsafe_allow_html=True)
 
         if filtered_labels:
             selected_label = st.selectbox("انتخاب عضو:", filtered_labels)
@@ -511,7 +525,7 @@ else:
     # بخش ۵: ماژول تحلیلی و پیش‌بینی هوشمند (فقط اعضای فعال)
     # ---------------------------------------------------------
     elif choice in ["📊 تحلیل و هوش مصنوعی", "📊 تحلیل هوش مصنوعی"]:
-        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند (مخصوص اعضای فعال)")
+        st.markdown("<h3 style='text-align: right;'>🤖 ماژول تحلیلی و پیش‌بینی هوشمند (مخصوص اعضای فعال)</h3>", unsafe_allow_html=True)
         
         hourly_df = get_hourly_occupancy(club_id)
         churn_df = predict_churn_risk(club_id)
@@ -606,7 +620,7 @@ else:
         col_chart, col_table = st.columns([1, 1])
 
         with col_chart:
-            st.write("### 📈 تحلیل ساعات شلوغی باشگاه")
+            st.markdown("<h3 style='text-align: right;'>📈 تحلیل ساعات شلوغی باشگاه</h3>", unsafe_allow_html=True)
             if not hourly_df.empty:
                 st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
                 st.caption("پراکندگی ورود ورزشکاران در طول ۲۴ ساعت شبانه‌روز")
@@ -614,7 +628,7 @@ else:
                 st.info("هنوز ترددی ثبت نشده است.")
 
         with col_table:
-            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضای فعال (AI Engine)")
+            st.markdown("<h3 style='text-align: right;'>⚠️ پیش‌بینی ریسک ریزش اعضای فعال (AI Engine)</h3>", unsafe_allow_html=True)
             
             table_rows = []
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -658,7 +672,7 @@ else:
     elif choice == "مدیریت و حذف":
         raw_members = get_all_members(club_id)
 
-        st.markdown("### 👤 حذف دستی یک عضو مشخص")
+        st.markdown("<h3 style='text-align: right;'>👤 حذف دستی یک عضو مشخص</h3>", unsafe_allow_html=True)
         search_del = st.text_input(
             "🔍 جستجوی عضو جهت حذف (بر اساس نام، شماره تماس یا کد ملی):",
             key="search_del_input"
@@ -695,7 +709,7 @@ else:
 
         st.markdown("---")
 
-        st.markdown("### 🗑️ حذف اشتراک‌های اضافی (بدون حذف عضو)")
+        st.markdown("<h3 style='text-align: right;'>🗑️ حذف اشتراک‌های اضافی (بدون حذف عضو)</h3>", unsafe_allow_html=True)
         search_sub = st.text_input(
             "🔍 جستجوی عضو جهت مدیریت/حذف اشتراک (نام، شماره تماس یا کد ملی):",
             key="search_sub_input"
@@ -740,7 +754,7 @@ else:
 
         st.markdown("---")
 
-        st.markdown("### ⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
+        st.markdown("<h3 style='text-align: right;'>⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)</h3>", unsafe_allow_html=True)
         st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
 
         confirm_text = st.text_input("برای تایید، عبارت 'RESET' را به انگلیسی وارد کنید:")
@@ -792,7 +806,7 @@ else:
     # بخش ۷: ایجاد حساب جدید
     # ---------------------------------------------------------
     elif choice == "⚙️ ساخت باشگاه/مدیر جدید":
-        st.subheader("👤 ساخت حساب باشگاه جدید")
+        st.markdown("<h3 style='text-align: right;'>👤 ساخت حساب باشگاه جدید</h3>", unsafe_allow_html=True)
         with st.form("new_user_form", clear_on_submit=True):
             new_username = st.text_input("نام کاربری جدید مدیر")
             new_club_name = st.text_input("نام جدید باشگاه / شرکت")
