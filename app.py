@@ -21,7 +21,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه (Supabase)", layout="wide")
 
 # -------------------------------------------------------------
-# استایل‌دهی سفارشی (اصلاح اندازه فونت‌ها و ظاهر کارت‌ها)
+# استایل‌دهی سفارشی (اصلاح اندازه فونت‌ها، ظاهر کارت‌ها و باگ بستن سایدبار)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -39,6 +39,24 @@ st.markdown("""
     }
     .stDataFrame {
         direction: rtl !important;
+    }
+
+    /* ---------------------------------------------------------
+       رفع کامل باگ لایه متنی / خط عمودی هنگام بستن سایدبار در RTL
+       --------------------------------------------------------- */
+    section[data-testid="stSidebar"] {
+        overflow: hidden !important;
+    }
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        visibility: hidden !important;
+    }
+    section[data-testid="stSidebar"][aria-expanded="false"] * {
+        display: none !important;
+    }
+    div[data-testid="stSidebarCollapsedControl"] {
+        visibility: visible !important;
+        display: block !important;
+        z-index: 999999 !important;
     }
 
     /* تنظیم اندازه فونت متغیرها و تیترهای کارت‌های آماری */
