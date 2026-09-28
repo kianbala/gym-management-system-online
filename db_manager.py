@@ -205,12 +205,22 @@ def delete_member(member_id, club_id):
 
 
 def reset_club_data(club_id):
-    """حذف تمامی اعضا و ترددهای مربوط به یک باشگاه مشخص"""
+    """حذف تمامی اعضا و ترددهای مربوط به یک باشگاه مشخص و بازنشانی کامل داده‌ها"""
     if not supabase:
         return False
     try:
+        # ۱. حذف کلیه ترددهای ثبت شده باشگاه
         supabase.table("attendance").delete().eq("club_id", club_id).execute()
+        
+        # ۲. حذف کلیه اعضای ثبت شده باشگاه
         supabase.table("members").delete().eq("club_id", club_id).execute()
+
+        # ۳. تلاش برای ریست کردن شماره‌انداز ID به عدد ۱ از طریق RPC (در صورت وجود)
+        try:
+            supabase.rpc("reset_members_sequence", {}).execute()
+        except Exception:
+            pass
+
         return True
     except Exception as e:
         st.error(f"خطا در پاکسازی دیتابیس: {e}")
