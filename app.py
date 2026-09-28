@@ -518,10 +518,15 @@ else:
 
         active_count = len(active_members_ids)
         
+        # محاسبه مجموع کل ترددهای اعضای فعال
+        active_attendance_count = sum(
+            1 for log in attendance_logs 
+            if log.get('member_id') in active_members_ids
+        )
+        
         # ۲. فیلتر کردن خروجی الگوریتم پیش‌بینی ریزش فقط برای اعضای فعال
         active_churn_df = pd.DataFrame()
         if not churn_df.empty:
-            # بررسی ستون آیدی عضو در دیتای هوش مصنوعی
             id_col = 'id' if 'id' in churn_df.columns else ('member_id' if 'member_id' in churn_df.columns else None)
             if id_col:
                 active_churn_df = churn_df[churn_df[id_col].isin(active_members_ids)].copy()
@@ -563,7 +568,7 @@ else:
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
-            st.metric("اعضای فعال", f"{active_count} نفر")
+            st.metric("مجموع ترددهای اعضای فعال", f"{active_attendance_count} ورود")
         with c2:
             st.metric("شلوغ‌ترین زمان", peak_hour_str)
         with c3:
