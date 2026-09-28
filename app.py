@@ -199,23 +199,40 @@ else:
             national_id = m.get("national_id", "")
             phone = m.get("phone", "")
             sub_days = m.get("subscription_days", 0) or 0
-            
             join_date_str = m.get("join_date")
-            is_expired_by_time = False
-            
-            if join_date_str:
-                try:
-                    clean_join = join_date_str.split('T')[0]
-                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
-                    expire_dt = join_dt + timedelta(days=30)
-                    expire_str = expire_dt.isoformat()
-                    if now_date > expire_dt:
-                        is_expired_by_time = True
-                except Exception:
-                    expire_str = "نامشخص"
-            else:
-                expire_str = "نامشخص"
 
+            # اگر کاربر دارای جلسات یا بسته فعال باشد
+            if sub_days > 0:
+                if sub_days > 12:
+                    package_type = "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"
+                else:
+                    package_type = "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان"
+
+                expire_str = "نامشخص"
+                is_expired_by_time = False
+                if join_date_str:
+                    try:
+                        clean_join = join_date_str.split('T')[0]
+                        join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
+                        expire_dt = join_dt + timedelta(days=30)
+                        expire_str = expire_dt.isoformat()
+                        if now_date > expire_dt:
+                            is_expired_by_time = True
+                    except Exception:
+                        pass
+
+                sub_code = str(m_id)
+                sessions_left = sub_days
+                status_str = "EXPIRED" if is_expired_by_time else "ACTIVE"
+            else:
+                # برای اعضای جدید بدون بسته: تمام مشخصات بسته خط‌تیره نمایش داده می‌شوند
+                package_type = "-"
+                sub_code = "-"
+                sessions_left = "-"
+                expire_str = "-"
+                status_str = "فاقد اشتراک"
+
+            # محاسبه روزهای غیبت
             if m_id in last_checkin_map:
                 days_absent = (now_date - last_checkin_map[m_id]).days
             elif join_date_str:
@@ -228,26 +245,14 @@ else:
             else:
                 days_absent = 0
 
-            if sub_days <= 0:
-                package_type = "بدون بسته"
-            elif sub_days > 12:
-                package_type = "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان"
-            else:
-                package_type = "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان"
-
-            if is_expired_by_time or sub_days <= 0:
-                status_str = "EXPIRED"
-            else:
-                status_str = "ACTIVE"
-
             processed_data.append({
                 "کد عضویت": m_id,
                 "نام و نام خانوادگی": name,
                 "کد ملی": national_id,
                 "شماره تماس": phone,
                 "نوع بسته": package_type,
-                "کد اشتراک": m_id,
-                "جلسات باقی‌مانده": sub_days,
+                "کد اشتراک": sub_code,
+                "جلسات باقی‌مانده": sessions_left,
                 "تاریخ انقضا": expire_str,
                 "وضعیت": status_str,
                 "روزهای غیبت": max(0, days_absent),
@@ -259,7 +264,7 @@ else:
         with col_filter:
             status_filter = st.selectbox(
                 "فیلتر وضعیت اشتراک:",
-                ["همه", "ACTIVE", "EXPIRED"]
+                ["همه", "ACTIVE", "EXPIRED", "فاقد اشتراک"]
             )
 
         with col_search:
