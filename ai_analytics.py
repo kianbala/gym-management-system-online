@@ -2,20 +2,21 @@ import pandas as pd
 import numpy as np
 import warnings
 from datetime import datetime
-from db_manager import get_all_members, get_attendance_logs
+from db_manager import supabase
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-def get_hourly_occupancy(club_id: str):
+def get_hourly_occupancy(club_id):
     """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز برای یک باشگاه مشخص"""
     try:
-        attendance_logs = get_attendance_logs(club_id)
+        res = supabase.table("attendance").select("check_in_time").eq("club_id", club_id).execute()
+        data = res.data or []
         
-        if not attendance_logs:
-            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0] * 24})
+        if not data:
+            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
         
-        df = pd.DataFrame(attendance_logs)
-        df['checkin_datetime'] = pd.to_datetime(df['check_in_time'], utc=True)
+        df = pd.DataFrame(data)
+        df['checkin_datetime'] = pd.to_datetime(df['check_in_time'])
         df['hour'] = df['checkin_datetime'].dt.hour
         
         hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
@@ -25,95 +26,86 @@ def get_hourly_occupancy(club_id: str):
         result['checkin_count'] = result['checkin_count'].astype(int)
         
         return result
-    except Exception:
-        return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0] * 24})
+    except Exception as e:
+        print(f"⚠️ خطا در محاسبه ساعات شلوغی: {e}")
+        return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
-
-def predict_churn_risk(club_id: str):
+def predict_churn_risk(club_id):
     """
-    تحلیل هوشمند ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده)
-    سازگار با سیستم دو مرحله‌ای (اعضای بدون بسته و اعضای دارای اشتراک)
+    تحلیل ریسک ریزش اعضا بر اساس منطق دقیق کد لوکال
+    (ترکیب روزهای غیبت + جلسات رو به اتمام)
     """
     try:
-        raw_members = get_all_members(club_id)
-        attendance_logs = get_attendance_logs(club_id)
+        # ۱. دریافت لیست اعضای باشگاه
+        members_res = supabase.table("members").select("*").eq("club_id", club_id).execute()
+        members_data = members_res.data or []
         
-        if not raw_members:
+        if not members_data:
             return pd.DataFrame()
+            
+        df_members = pd.DataFrame(members_data)
         
-        # استخراج جدیدترین (آخرین) زمان حضور هر عضو به صورت ایمن و بدون تداخل Timezone
+        # ۲. دریافت آخرین تاریخ تردد اعضا
+        attendance_res = supabase.table("attendance").select("member_id, check_in_time").eq("club_id", club_id).execute()
+        attendance_data = attendance_res.data or []
+        
         last_checkin_map = {}
-        for log in attendance_logs:
-            m_id = log.get('member_id')
-            check_time_str = log.get('check_in_time')
-            if m_id and check_time_str:
-                try:
-                    dt = pd.to_datetime(check_time_str, utc=True).tz_localize(None)
-                    # اگر عضو در مپ نباشد یا این تاریخ جدیدتر از قبلی باشد، به‌روزرسانی می‌شود
-                    if m_id not in last_checkin_map or dt > last_checkin_map[m_id]:
-                        last_checkin_map[m_id] = dt
-                except Exception:
-                    pass
+        if attendance_data:
+            df_att = pd.DataFrame(attendance_data)
+            df_att['check_in_time'] = pd.to_datetime(df_att['check_in_time'])
+            # پیدا کردن آخرین زمان حضور برای هر کاربر
+            last_att = df_att.groupby('member_id')['check_in_time'].max().to_dict()
+            last_checkin_map = last_att
 
         now = datetime.now()
-        processed_members = []
-
-        for m in raw_members:
-            m_id = m.get('id')
-            name = m.get('name', '')
-            phone = m.get('phone', '')
-            sessions = m.get('subscription_days', 0) or 0
-            join_date_str = m.get('join_date')
-
-            # ۱. محاسبه روزهای غیبت
+        
+        # ۳. محاسبه روزهای غیبت
+        def calc_days_absent(row):
+            m_id = row['id']
             if m_id in last_checkin_map:
-                last_dt = last_checkin_map[m_id]
-                days_absent = max(0, (now - last_dt).days)
-            elif join_date_str:
-                try:
-                    join_dt = datetime.strptime(join_date_str, "%Y-%m-%d")
-                    days_absent = max(0, (now - join_dt).days)
-                except Exception:
-                    days_absent = 30
-            else:
-                days_absent = 30
+                last_t = last_checkin_map[m_id]
+                # تبدیل به حالت tz-naive جهت مقایسه بدون خطا
+                if hasattr(last_t, 'tzinfo') and last_t.tzinfo is not None:
+                    last_t = last_t.tz_localize(None)
+                diff = (now - last_t).days
+                return max(0, diff)
+            return 30  # اگر ترددی ثبت نشده، طبق منطق لوکال ۳۰ روز در نظر گرفته می‌شود
 
-            # ۲. محاسبه امتیاز هوشمند ریسک
+        df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
+        
+        # ۴. محاسبه دقیق امتیاز ریسک طبق فرمول لوکال (0 تا 100)
+        def calculate_risk_score(row):
+            days = row['days_since_last_checkin']
+            sessions = row.get('subscription_days', 0) or 0
+            
             # تاثیر روزهای غیبت (تا سقف ۷۰ امتیاز)
-            risk_from_days = min(days_absent * 5, 70)
-
+            risk_from_days = min(days * 5, 70)
+            
             # تاثیر جلسات رو به اتمام (تا سقف ۳۰ امتیاز)
-            if sessions == 0:
+            if sessions <= 0:
                 risk_from_sessions = 30
             elif sessions <= 3:
                 risk_from_sessions = 15
             else:
                 risk_from_sessions = 0
+                
+            return float(risk_from_days + risk_from_sessions)
 
-            churn_risk_score = float(risk_from_days + risk_from_sessions)
-
-            # ۳. تبدیل امتیاز عددی به برچسب
-            if churn_risk_score >= 70:
-                risk_level = 'بالا (High)'
-            elif churn_risk_score >= 40:
-                risk_level = 'متوسط (Medium)'
+        df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
+        
+        # ۵. نگاشت امتیاز به برچسب سطح ریسک
+        def map_to_label(score):
+            if score >= 70:
+                return 'بالا (High)'
+            elif score >= 40:
+                return 'متوسط (Medium)'
             else:
-                risk_level = 'پایین (Low)'
+                return 'پایین (Low)'
+                
+        df_members['risk_level'] = df_members['churn_risk_score'].apply(map_to_label)
+        
+        return df_members
 
-            processed_members.append({
-                'id': m_id,
-                'member_id': m_id,
-                'name': name,
-                'phone': phone,
-                'remaining_sessions': sessions,
-                'days_since_last_checkin': days_absent,
-                'days_absent': days_absent,
-                'churn_risk_score': churn_risk_score,
-                'risk_level': risk_level
-            })
-
-        df = pd.DataFrame(processed_members)
-        return df
-
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ خطا در محاسبه پیش‌بینی ریزش: {e}")
         return pd.DataFrame()
