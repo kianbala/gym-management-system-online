@@ -70,8 +70,8 @@ def generate_dummy_data_for_manager(username):
             num_attendances = 0
             last_checkin_days_ago = None
             remaining_sessions = 0
-        elif profile_type == 'expired':     # بسته داشته ولی منقضی شده (نام بسته حفظ می‌شود)
-            sub_status = 'EXPIRED'
+        elif profile_type == 'expired':     # بسته داشته ولی منقضی شده
+            sub_status = 'expired'         # حروف کوچک اصلاح شد
             package_title = pkg_name
             days_active = random.randint(32, 60)
             num_attendances = initial_sessions
@@ -101,7 +101,6 @@ def generate_dummy_data_for_manager(username):
             remaining_sessions = max(1, initial_sessions - num_attendances)
 
         join_date = (now - timedelta(days=days_active)).date().isoformat()
-        expiry_date = (now - timedelta(days=last_checkin_days_ago or 0) + timedelta(days=30)).date().isoformat() if profile_type != 'no_package' else None
 
         member_data = {
             "name": full_name,
@@ -109,7 +108,6 @@ def generate_dummy_data_for_manager(username):
             "national_id": national_id,
             "join_date": join_date,
             "subscription_days": remaining_sessions,
-            "package_name": package_title,  # ثبت نام واقعی بسته
             "status": sub_status,
             "club_id": club_id
         }
