@@ -13,15 +13,30 @@ if sys.stdout.encoding.lower() != 'utf-8':
 
 # --- ۱. اتصال به Supabase Client (جهت استفاده در auth.py و ai_analytics.py) ---
 def init_supabase():
-    url = st.secrets.get("SUPABASE_URL") or st.secrets.get("supabase", {}).get("url", "")
-    key = st.secrets.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key", "")
+    # بررسی تمام ساختارهای ممکن در Secrets برای جلوگیری از None شدن
+    supabase_secrets = st.secrets.get("supabase", {})
+    
+    url = (
+        st.secrets.get("SUPABASE_URL") or 
+        supabase_secrets.get("url") or 
+        supabase_secrets.get("SUPABASE_URL", "")
+    )
+    
+    key = (
+        st.secrets.get("SUPABASE_KEY") or 
+        supabase_secrets.get("key") or 
+        supabase_secrets.get("SUPABASE_KEY", "")
+    )
+    
     if not url or not key:
         return None
+        
     return create_client(url, key)
 
 try:
     supabase = init_supabase()
-except Exception:
+except Exception as e:
+    print(f"Error initializing Supabase client: {e}")
     supabase = None
 
 # --- ۲. اتصال مستقیم PostgreSQL ---
@@ -39,7 +54,8 @@ def get_connection():
         database=db_config["database"],
         user=db_config["user"],
         password=db_config["password"],
-        port=db_config["port"]
+        port=db_config["port"],
+        sslmode="require"  # برای اتصال امن به دیتابیس Supabase
     )
 
 # --- ۳. توابع اصلی فراخوانی‌شده توسط app.py ---
