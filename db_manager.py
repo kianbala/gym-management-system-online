@@ -229,7 +229,7 @@ def record_checkin(club_id, member_id):
             UPDATE public.subscriptions 
             SET remaining_sessions = %s 
             WHERE subscription_id = %s AND club_id = %s
-        """, (subscription_id, sub_id, club_id))
+        """, (new_remaining, sub_id, club_id))
         
     conn.commit()
     conn.close()
@@ -475,7 +475,7 @@ def get_all_members(club_id):
     return get_active_members(club_id)
 
 def update_subscription(club_id, subscription_id, remaining_sessions):
-    """ویرایش جلسات باقی‌‌مانده یک اشتراک"""
+    """ویرایش جلسات باقی‌مانده یک اشتراک"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
