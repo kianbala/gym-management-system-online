@@ -1,11 +1,10 @@
 import random
 from datetime import datetime, timedelta
-from db_manager import supabase
+from db_manager import get_connection
 
 FIRST_NAMES = [
     'علی', 'محمد', 'امیر', 'حسین', 'مهدی', 'رضا', 'سروش', 'آرش', 'کامران', 'نوید',
-    'سارا', 'نیلوفر', 'مریم', 'زهرا', 'پریسا', 'فاطمه', 'مهرنوش', 'کیانا', 'مینا', 'نرگس',
-    'پرهام', 'سامان', 'دانیال', 'فرزاد', 'یلدا', 'مونا', 'الهام', 'سپیده'
+    'سارا', 'نیلوفر', 'مریم', 'زهرا', 'پریسا', 'فاطمه', 'مهرنوش', 'کیانا', 'مینا', 'نرگس'
 ]
 
 LAST_NAMES = [
@@ -13,32 +12,11 @@ LAST_NAMES = [
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
-# فقط دو بسته ۱۲ و ۲۴ جلسه‌ای مجاز هستند
-PACKAGES = [
-    {"name": "اشتراک ۱۲ جلسه‌ای", "sessions": 12},
-    {"name": "اشتراک ۲۴ جلسه‌ای", "sessions": 24}
-]
+def generate_data(club_id="admin"):
+    conn = get_connection()
+    cursor = conn.cursor()
 
-def generate_unique_national_id(existing_ids):
-    while True:
-        nid = "".join([str(random.randint(0, 9)) for _ in range(10)])
-        if nid not in existing_ids and not nid.startswith("000"):
-            existing_ids.add(nid)
-            return nid
-
-def generate_dummy_data_for_manager(username):
-    user_res = supabase.table("users").select("*").eq("username", username).execute()
-    if not user_res.data:
-        print(f"❌ Error: Manager with username '{username}' was not found in database!")
-        return
-
-    user_data = user_res.data[0]
-    club_id = user_data.get("club_id", username)
-
-    existing_members = supabase.table("members").select("national_id").eq("club_id", club_id).execute()
-    existing_ids = {m.get("national_id") for m in (existing_members.data or []) if m.get("national_id")}
-
-    print(f"⏳ Generating 30 sample members and attendance history for manager: '{username}' (Club: '{club_id}') ...")
+    print(f"⏳ در حال افزودن ۳۰ عضو جدید برای باشگاه '{club_id}'...")
     now = datetime.now()
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
@@ -49,114 +27,111 @@ def generate_dummy_data_for_manager(username):
     for i in range(1, 31):
         f_name = random.choice(FIRST_NAMES)
         l_name = random.choice(LAST_NAMES)
-        full_name = f"{f_name} {l_name}"
         
-        national_id = generate_unique_national_id(existing_ids)
+        unique_seed = int(now.timestamp()) + i
+        national_id = f"{1000000000 + (unique_seed * 123) % 899999999}"[:10]
         phone_number = f"0912{random.randint(1000000, 9999999)}"
 
-        profile_type = random.choices(
-            ['regular', 'at_risk', 'churning', 'expired', 'no_package'], 
-            weights=[0.40, 0.20, 0.15, 0.15, 0.10]
-        )[0]
+        # بررسی تکراری نبودن عضو در این باشگاه
+        cursor.execute(
+            "SELECT 1 FROM public.members WHERE (national_id = %s OR phone_number = %s) AND club_id = %s", 
+            (national_id, phone_number, club_id)
+        )
+        if cursor.fetchone():
+            continue
 
-        pkg = random.choice(PACKAGES)
-        pkg_name = pkg["name"]
-        initial_sessions = pkg["sessions"]
-
-        if profile_type == 'no_package':   # فاقد بسته
-            sub_status = 'inactive'
-            package_title = 'بدون بسته'
-            days_active = random.randint(0, 10)
-            num_attendances = 0
-            last_checkin_days_ago = None
-            remaining_sessions = 0
-        elif profile_type == 'expired':     # بسته منقضی شده
-            sub_status = 'expired'
-            package_title = pkg_name
-            days_active = random.randint(32, 60)
-            num_attendances = initial_sessions
-            last_checkin_days_ago = random.randint(20, days_active)
-            remaining_sessions = 0
-        elif profile_type == 'churning':    # در حال ریزش (فعال)
-            sub_status = 'active'
-            package_title = pkg_name
-            days_active = random.randint(15, 28)
-            num_attendances = random.randint(1, min(3, initial_sessions - 1))
-            last_checkin_days_ago = random.randint(14, days_active)
-            remaining_sessions = max(1, initial_sessions - num_attendances)
-        elif profile_type == 'at_risk':     # در معرض خطر (فعال)
-            sub_status = 'active'
-            package_title = pkg_name
-            days_active = random.randint(10, 25)
-            num_attendances = random.randint(2, min(6, initial_sessions - 1))
-            last_checkin_days_ago = random.randint(6, 12)
-            remaining_sessions = max(1, initial_sessions - num_attendances)
-        else:                               # کاربر منظم (فعال)
-            sub_status = 'active'
-            package_title = pkg_name
-            days_active = random.randint(1, 28)
-            max_possible_logs = min(initial_sessions - 1, int(days_active * 0.7) + 1)
-            num_attendances = random.randint(1, max(1, max_possible_logs))
-            last_checkin_days_ago = random.randint(0, min(3, days_active))
-            remaining_sessions = max(1, initial_sessions - num_attendances)
-
-        # تضمین قطعی جهت عدم تجاوز جلسات باقی‌مانده از سقف ۱۲ یا ۲۴
-        remaining_sessions = min(remaining_sessions, initial_sessions)
-
-        join_date = (now - timedelta(days=days_active)).date().isoformat()
-
-        member_data = {
-            "name": full_name,
-            "phone": phone_number,
-            "national_id": national_id,
-            "join_date": join_date,
-            "subscription_days": remaining_sessions,
-            "status": sub_status,
-            "club_id": club_id
-        }
+        # درج عضو جدید
+        cursor.execute("""
+            INSERT INTO public.members (first_name, last_name, national_id, phone_number, club_id)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING member_id;
+        """, (f_name, l_name, national_id, phone_number, club_id))
         
-        try:
-            member_res = supabase.table("members").insert(member_data).execute()
-            if not member_res.data:
-                continue
+        member_id = cursor.fetchone()[0]
 
-            member_id = member_res.data[0]['id']
+        total_sessions = random.choice([12, 24])
+        
+        # 🎯 تعیین وضعیت اشتراک: ۸۰٪ ACTIVE و ۲۰٪ EXPIRED
+        sub_status = random.choices(['ACTIVE', 'EXPIRED'], weights=[0.80, 0.20])[0]
 
-            attendance_records = []
-            if num_attendances > 0 and last_checkin_days_ago is not None:
-                hour = random.choice(all_hours)
-                minute = random.randint(0, 59)
-                last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
-                attendance_records.append({
-                    "member_id": member_id,
-                    "check_in_time": last_checkin_time.isoformat(),
-                    "club_id": club_id
-                })
+        if sub_status == 'EXPIRED':
+            # کاربر منقضی‌شده: تاریخ شروع قدیمی (۴۵ تا ۶۰ روز پیش)
+            start_days_ago = random.randint(45, 60)
+            start_date = now - timedelta(days=start_days_ago)
+            end_date = start_date + timedelta(days=30)
+            
+            remaining = random.choice([0, 0, 0, random.randint(1, 2)])
+            days_active = start_days_ago
+            
+            last_checkin_days_ago = random.randint(15, min(35, days_active))
+            
+        else:
+            # کاربر فعال: ثبت‌نام در طی ۲۸ روز گذشته
+            days_active = random.randint(1, 28)
+            start_date = now - timedelta(days=days_active)
+            end_date = start_date + timedelta(days=30)
 
-                for _ in range(num_attendances - 1):
-                    min_past = last_checkin_days_ago + 1
-                    max_past = max(min_past, days_active)
-                    past_days_ago = random.randint(min_past, max_past)
-                    past_hour = random.choice(all_hours)
-                    past_minute = random.randint(0, 59)
-                    past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
-                    
-                    attendance_records.append({
-                        "member_id": member_id,
-                        "check_in_time": past_checkin_time.isoformat(),
-                        "club_id": club_id
-                    })
+            # الگوی رفتاری
+            pattern = random.choices(['regular', 'at_risk', 'churning'], weights=[0.60, 0.25, 0.15])[0]
 
-            if attendance_records:
-                supabase.table("attendance").insert(attendance_records).execute()
+            if pattern == 'regular':
+                last_checkin_days_ago = random.randint(0, min(3, days_active))
+                remaining = random.randint(4, total_sessions - 1)
                 
-            added_count += 1
-        except Exception as e:
-            print(f"⚠️ خطا در ثبت عضو {full_name}: {e}")
+            elif pattern == 'at_risk':
+                min_days = min(6, days_active)
+                max_days = min(10, days_active)
+                last_checkin_days_ago = random.randint(min_days, max_days)
+                remaining = random.randint(1, 3)
+                
+            else: # churning
+                min_days = min(12, days_active)
+                max_days = min(25, days_active)
+                last_checkin_days_ago = random.randint(min_days, max_days)
+                remaining = 0
 
-    print(f"✅ Created {added_count} sample members & attendance logs for manager '{username}' (Club: '{club_id}')!")
+        # درج اشتراک
+        cursor.execute("""
+            INSERT INTO public.subscriptions (member_id, remaining_sessions, start_date, end_date, status, club_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING subscription_id;
+        """, (member_id, remaining, start_date, end_date, sub_status, club_id))
+
+        sub_id = cursor.fetchone()[0]
+
+        # ثبت آخرین تردد
+        hour = random.choice(all_hours)
+        minute = random.randint(0, 59)
+        last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
+
+        cursor.execute("""
+            INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+            VALUES (%s, %s, %s, %s);
+        """, (member_id, sub_id, last_checkin_time, club_id))
+
+        # ثبت ترددهای گذشته به تعداد جلسات استفاده‌شده
+        used_sessions = max(0, total_sessions - remaining - 1)
+        
+        start_past_days = min(last_checkin_days_ago + 1, days_active)
+        end_past_days = days_active
+        
+        for _ in range(used_sessions):
+            past_days_ago = random.randint(start_past_days, end_past_days)
+            past_hour = random.choice(all_hours)
+            past_minute = random.randint(0, 59)
+            past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
+            
+            cursor.execute("""
+                INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+                VALUES (%s, %s, %s, %s);
+            """, (member_id, sub_id, past_checkin_time, club_id))
+            
+        added_count += 1
+
+    conn.commit()
+    print(f"✅ با موفقیت {added_count} عضو جدید برای باشگاه '{club_id}' در Supabase اضافه شدند!")
+    conn.close()
 
 if __name__ == "__main__":
-    target_username = input("Enter manager username (e.g. admin): ").strip()
-    if target_username:
-        generate_dummy_data_for_manager(target_username)
+    # در صورت نیاز می‌توانید اسم باشگاه را اینجا تغییر دهید
+    generate_data("admin")
