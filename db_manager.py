@@ -470,3 +470,22 @@ def get_churn_analytics_report(club_id):
     df = pd.read_sql(query, conn, params=(club_id,))
     conn.close()
     return df
+
+# --- توابع کمکی جهت هماهنگی کامل با app.py ---
+
+def get_all_members(club_id):
+    """جایگزین تابع دریافت همه اعضا جهت هماهنگی با app.py"""
+    return get_active_members(club_id)
+
+def update_subscription(club_id, subscription_id, remaining_sessions):
+    """ویرایش جلسات باقی‌مانده یک اشتراک"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE public.subscriptions 
+        SET remaining_sessions = %s 
+        WHERE subscription_id = %s AND club_id = %s
+    """, (remaining_sessions, subscription_id, club_id))
+    conn.commit()
+    conn.close()
+    return True
