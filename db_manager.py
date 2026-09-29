@@ -11,10 +11,7 @@ if sys.stdout.encoding.lower() != 'utf-8':
         pass
 
 # --- تنظیمات اتصال به Supabase PostgreSQL ---
-# این اطلاعات را می‌توانید از پنل Supabase بخش Project Settings -> Database (Connection String) دریافت کنید
-# یا در فایل .streamlit/secrets.toml ذخیره نمایید.
 def get_connection():
-    # استفاده از secrets یا مقادیر پیش‌فرض
     db_config = st.secrets.get("postgres", {
         "host": "db.xxxxxxxxxxxx.supabase.co",
         "database": "postgres",
@@ -232,7 +229,7 @@ def record_checkin(club_id, member_id):
             UPDATE public.subscriptions 
             SET remaining_sessions = %s 
             WHERE subscription_id = %s AND club_id = %s
-        """, (new_remaining, sub_id, club_id))
+        """, (subscription_id, sub_id, club_id))
         
     conn.commit()
     conn.close()
@@ -471,14 +468,14 @@ def get_churn_analytics_report(club_id):
     conn.close()
     return df
 
-# --- توابع کمکی جهت هماهنگی کامل با app.py ---
+# --- توابع کمکی و سازگارکننده جهت هماهنگی کامل با app.py ---
 
 def get_all_members(club_id):
     """جایگزین تابع دریافت همه اعضا جهت هماهنگی با app.py"""
     return get_active_members(club_id)
 
 def update_subscription(club_id, subscription_id, remaining_sessions):
-    """ویرایش جلسات باقی‌مانده یک اشتراک"""
+    """ویرایش جلسات باقی‌‌مانده یک اشتراک"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -489,3 +486,41 @@ def update_subscription(club_id, subscription_id, remaining_sessions):
     conn.commit()
     conn.close()
     return True
+
+def decrement_subscription(arg1, arg2=None):
+    """کم کردن یک جلسه از اشتراک کاربر (پشتیبانی از ۱ یا ۲ ورودی)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        if arg2 is None:
+            sub_id = arg1
+            cursor.execute("""
+                UPDATE public.subscriptions 
+                SET remaining_sessions = GREATEST(0, remaining_sessions - 1) 
+                WHERE subscription_id = %s
+            """, (sub_id,))
+            cursor.execute("""
+                UPDATE public.subscriptions 
+                SET status = 'EXPIRED' 
+                WHERE subscription_id = %s AND remaining_sessions = 0
+            """, (sub_id,))
+        else:
+            club_id, sub_id = arg1, arg2
+            cursor.execute("""
+                UPDATE public.subscriptions 
+                SET remaining_sessions = GREATEST(0, remaining_sessions - 1) 
+                WHERE subscription_id = %s AND club_id = %s
+            """, (sub_id, club_id))
+            cursor.execute("""
+                UPDATE public.subscriptions 
+                SET status = 'EXPIRED' 
+                WHERE subscription_id = %s AND club_id = %s AND remaining_sessions = 0
+            """, (sub_id, club_id))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error decrementing subscription: {e}")
+        return False
+    finally:
+        conn.close()
