@@ -109,7 +109,7 @@ def add_member(club_id, first_name, last_name, national_id, phone_number):
         conn.close()
         return False, f"خطا در ثبت عضو: {e}"
 
-# --- ۳. تابع حذف عضو (حذف خودکار وابسته به دلیل CASCADE) ---
+# --- ۳. تابع حذف عضو ---
 def delete_member(club_id, member_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -474,15 +474,24 @@ def get_all_members(club_id):
     """جایگزین تابع دریافت همه اعضا جهت هماهنگی با app.py"""
     return get_active_members(club_id)
 
-def update_subscription(club_id, subscription_id, remaining_sessions):
-    """ویرایش جلسات باقی‌مانده یک اشتراک"""
+def update_subscription(arg1, arg2, arg3=None):
+    """ویرایش جلسات باقی‌مانده یک اشتراک (سازگار با ۲ یا ۳ ورودی)"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE public.subscriptions 
-        SET remaining_sessions = %s 
-        WHERE subscription_id = %s AND club_id = %s
-    """, (remaining_sessions, subscription_id, club_id))
+    if arg3 is None:
+        subscription_id, remaining_sessions = arg1, arg2
+        cursor.execute("""
+            UPDATE public.subscriptions 
+            SET remaining_sessions = %s 
+            WHERE subscription_id = %s
+        """, (remaining_sessions, subscription_id))
+    else:
+        club_id, subscription_id, remaining_sessions = arg1, arg2, arg3
+        cursor.execute("""
+            UPDATE public.subscriptions 
+            SET remaining_sessions = %s 
+            WHERE subscription_id = %s AND club_id = %s
+        """, (remaining_sessions, subscription_id, club_id))
     conn.commit()
     conn.close()
     return True
