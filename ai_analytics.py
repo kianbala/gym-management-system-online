@@ -2,20 +2,18 @@ import pandas as pd
 import numpy as np
 import warnings
 from datetime import datetime
-from db_manager import supabase
+from db_manager import get_all_members, get_attendance_logs
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
 def get_hourly_occupancy(club_id):
-    """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز برای یک باشگاه مشخص"""
+    """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز"""
     try:
-        res = supabase.table("attendance").select("check_in_time").eq("club_id", club_id).execute()
-        data = res.data or []
-        
-        if not data:
+        logs = get_attendance_logs(club_id)
+        if not logs:
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
         
-        df = pd.DataFrame(data)
+        df = pd.DataFrame(logs)
         df['checkin_datetime'] = pd.to_datetime(df['check_in_time'])
         df['hour'] = df['checkin_datetime'].dt.hour
         
@@ -31,57 +29,42 @@ def get_hourly_occupancy(club_id):
         return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
 def predict_churn_risk(club_id):
-    """
-    تحلیل ریسک ریزش اعضا بر اساس منطق دقیق کد لوکال
-    (ترکیب روزهای غیبت + جلسات رو به اتمام)
-    """
+    """تحلیل ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده)"""
     try:
-        # ۱. دریافت لیست اعضای باشگاه
-        members_res = supabase.table("members").select("*").eq("club_id", club_id).execute()
-        members_data = members_res.data or []
-        
-        if not members_data:
+        raw_members = get_all_members(club_id)
+        if not raw_members:
             return pd.DataFrame()
             
-        df_members = pd.DataFrame(members_data)
+        df_members = pd.DataFrame(raw_members)
         
-        # ۲. دریافت آخرین تاریخ تردد اعضا
-        attendance_res = supabase.table("attendance").select("member_id, check_in_time").eq("club_id", club_id).execute()
-        attendance_data = attendance_res.data or []
-        
+        attendance_logs = get_attendance_logs(club_id)
         last_checkin_map = {}
-        if attendance_data:
-            df_att = pd.DataFrame(attendance_data)
+        if attendance_logs:
+            df_att = pd.DataFrame(attendance_logs)
             df_att['check_in_time'] = pd.to_datetime(df_att['check_in_time'])
-            # پیدا کردن آخرین زمان حضور برای هر کاربر
             last_att = df_att.groupby('member_id')['check_in_time'].max().to_dict()
             last_checkin_map = last_att
 
         now = datetime.now()
         
-        # ۳. محاسبه روزهای غیبت
         def calc_days_absent(row):
             m_id = row['id']
             if m_id in last_checkin_map:
                 last_t = last_checkin_map[m_id]
-                # تبدیل به حالت tz-naive جهت مقایسه بدون خطا
                 if hasattr(last_t, 'tzinfo') and last_t.tzinfo is not None:
                     last_t = last_t.tz_localize(None)
                 diff = (now - last_t).days
                 return max(0, diff)
-            return 30  # اگر ترددی ثبت نشده، طبق منطق لوکال ۳۰ روز در نظر گرفته می‌شود
+            return 30
 
         df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
         
-        # ۴. محاسبه دقیق امتیاز ریسک طبق فرمول لوکال (0 تا 100)
         def calculate_risk_score(row):
             days = row['days_since_last_checkin']
             sessions = row.get('subscription_days', 0) or 0
             
-            # تاثیر روزهای غیبت (تا سقف ۷۰ امتیاز)
             risk_from_days = min(days * 5, 70)
             
-            # تاثیر جلسات رو به اتمام (تا سقف ۳۰ امتیاز)
             if sessions <= 0:
                 risk_from_sessions = 30
             elif sessions <= 3:
@@ -93,7 +76,6 @@ def predict_churn_risk(club_id):
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
         
-        # ۵. نگاشت امتیاز به برچسب سطح ریسک
         def map_to_label(score):
             if score >= 70:
                 return 'بالا (High)'
