@@ -20,57 +20,33 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# استایل RTL کامل و تمیز (بدون خراب کردن DOM استریم‌لیت)
+# استایل RTL استاندارد (بدون جدا کردن سایبار از جریان صفحه)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. تنظیم فونت و جهت سراسری RTL برای کل اپلیکیشن و فرم‌ها */
-    html, body, .stApp, [data-testid="stAppViewContainer"], .main {
+    /* ۱. جهت‌دهی راست‌چین سراسری برای کل اپلیکیشن */
+    html, body, .stApp {
         direction: rtl !important;
         text-align: right !important;
         font-family: 'Vazirmatn', 'Tahoma', sans-serif !important;
     }
 
-    /* ۲. انتقال تمیز سایبار به سمت راست بدون flex-reverse */
+    /* ۲. تنظیم محتوای اصلی جهت عدم تداخل با لبه‌ها */
+    .main .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 2rem !important;
+        padding-right: 2rem !important;
+        padding-left: 2rem !important;
+        max-width: 100% !important;
+    }
+
+    /* ۳. تنظیم جهت سایبار */
     [data-testid="stSidebar"] {
-        position: fixed !important;
-        right: 0 !important;
-        left: auto !important;
-        top: 0 !important;
-        bottom: 0 !important;
         direction: rtl !important;
         text-align: right !important;
-        border-left: 1px solid #333333 !important;
-        border-right: none !important;
-        z-index: 100 !important;
     }
 
-    /* نابودی کامل لکه حروف و خطوط راست هنگام بسته‌بودن سایبار */
-    [data-testid="stSidebar"][aria-expanded="false"] {
-        display: none !important;
-        visibility: hidden !important;
-        width: 0px !important;
-    }
-
-    /* تنظیم فاصله محتوای اصلی وقتی سایبار باز است */
-    @media (min-width: 992px) {
-        [data-testid="stSidebar"][aria-expanded="true"] ~ section[data-testid="stMain"] {
-            margin-right: 21rem !important;
-            margin-left: 0 !important;
-        }
-    }
-
-    /* ۳. انتقال دکمه فلش باز/بسته کردن منو به گوشه بالا سمت راست */
-    [data-testid="stSidebarCollapsedControl"],
-    button[data-testid="stSidebarCollapseButton"] {
-        right: 0.75rem !important;
-        left: auto !important;
-        position: fixed !important;
-        top: 0.5rem !important;
-        z-index: 999999 !important;
-    }
-
-    /* ۴. راست‌‌چین کردن فرم‌ها، ورودی‌ها، تب‌ها و دکمه‌ها (حتی در صفحه ورود) */
+    /* ۴. راست‌چین کردن ورودی‌ها، تب‌ها و دکمه‌ها */
     .stTextInput input, .stSelectbox, .stMarkdown, .stButton, div[data-baseweb="tab-list"] {
         direction: rtl !important;
         text-align: right !important;
@@ -89,7 +65,6 @@ st.markdown("""
         direction: rtl !important;
         background-color: #1e1e1e !important;
         border-radius: 8px !important;
-        padding: 4px !important;
         border: 1px solid #333333 !important;
     }
 
@@ -124,10 +99,6 @@ st.markdown("""
 
     div[data-testid="InputInstructions"] {
         display: none !important;
-    }
-
-    html, body, [data-testid="stAppViewContainer"] {
-        overflow-x: hidden !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -305,7 +276,7 @@ else:
         col_search, col_filter = st.columns([2, 1])
         
         with col_search:
-            search_dash = st.text_input("🔍 جستجوی عضو (نام، شماره، کد ملی یا کد عضویت):", placeholder="مثلاً: کیان، 0912 یا کد عضویت...")
+            search_dash = st.text_input("🔍 جستجوی عضو (نام، شماره، کد ملی یا کد عضویت):", placeholder="مثلاً: علی، 0912 یا کد عضویت...")
             
         with col_filter:
             selected_status = st.selectbox("فیلتر وضعیت اشتراک:", ["همه", "ACTIVE", "EXPIRED"])
