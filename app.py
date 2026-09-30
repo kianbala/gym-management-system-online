@@ -20,45 +20,15 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL (سایبار سمت راست + عدم بهم‌ریختگی ستون‌ها)
+# تنظیمات استایل RTL اصولی و استاندارد (بدون آسیب به لایوت st.columns)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
+    /* ۱. تعریف فونت و راست‌چین کلی متون */
     html, body, [class*="css"] {
         font-family: 'Vazirmatn', 'Tahoma', sans-serif;
     }
-
-    /* ۱. انتقال کامل منوی کناری (Sidebar) به سمت راست */
-    [data-testid="stAppViewContainer"] {
-        flex-direction: row-reverse !important;
-    }
-
-    section[data-testid="stSidebar"] {
-        right: 0 !important;
-        left: auto !important;
-        border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-right: none !important;
-        direction: rtl !important;
-        text-align: right !important;
-    }
-
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        transform: translateX(100%) !important;
-        margin-right: 0 !important;
-        margin-left: 0 !important;
-    }
-
-    /* ۲. جلوگیری از بهم‌ریختگی ستون‌ها (st.columns) با فعال بودن سایبار راست */
-    [data-testid="stHorizontalBlock"] {
-        direction: rtl !important;
-        flex-direction: row !important;
-    }
-
-    [data-testid="column"] {
-        direction: rtl !important;
-    }
-
-    /* ۳. راست‌چین کردن محتوای اصلی */
+    
     .main .block-container {
         direction: rtl !important;
         text-align: right !important;
@@ -70,7 +40,7 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ۴. استایل منظم کارت‌های متریک (Metrics) */
+    /* ۲. استایل منظم و تمیز کارت‌های متریک (Metrics) */
     [data-testid="stMetric"] {
         text-align: right !important;
         direction: rtl !important;
@@ -97,7 +67,7 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ۵. تنظیم راست‌چین دیتاتفریم‌ها و سلکت‌باکس‌ها */
+    /* ۳. تنظیم راست‌چین دیتاتفریم‌ها و سلکت‌باکس‌ها */
     .stDataFrame, div[data-baseweb="select"] {
         direction: rtl !important;
         text-align: right !important;
@@ -111,7 +81,7 @@ st.markdown("""
         overflow-x: hidden !important;
     }
 
-    /* ۶. دکمه باز/بسته کردن منو در سمت راست */
+    /* ۴. تنظیمات هدر و منوی کناری */
     header[data-testid="stHeader"] {
         direction: rtl !important;
     }
@@ -120,7 +90,11 @@ st.markdown("""
     [data-testid="collapsedControl"] {
         right: 0.5rem !important;
         left: auto !important;
-        float: right !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        direction: rtl !important;
+        text-align: right !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -523,7 +497,7 @@ else:
             high_risk_cnt = medium_risk_cnt = low_risk_cnt = 0
             high_pct = med_pct = low_pct = 0.0
 
-        # کارت‌های متریک پنج‌گانه
+        # کارت‌های متریک پنج‌گانه به صورت مرتب
         m1, m2, m3, m4, m5 = st.columns(5)
         
         with m1:
@@ -539,6 +513,7 @@ else:
         
         st.markdown("---")
         
+        # چیدمان دو ستونه: جدول سمت راست (RTL) و نمودار سمت چپ
         col_table, col_chart = st.columns([1, 1])
         
         with col_table:
