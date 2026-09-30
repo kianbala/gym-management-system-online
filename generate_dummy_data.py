@@ -23,7 +23,7 @@ def generate_data(club_id):
     regular_hours = [8, 9, 10, 11, 14, 15, 16, 22]
     all_hours = peak_hours + regular_hours
 
-    # 6 High Risk (20%), 6 Medium Risk (20%), 18 Low Risk (60%)
+    # Exact Distribution: 6 High Risk (20%), 6 Medium Risk (20%), 18 Low Risk (60%)
     risk_profiles = ['high_risk'] * 6 + ['medium_risk'] * 6 + ['low_risk'] * 18
     random.shuffle(risk_profiles)
 
@@ -52,9 +52,10 @@ def generate_data(club_id):
         
         member_id = cursor.fetchone()[0]
 
+        # الزام رعایت بسته‌های ۱۲ یا ۲۴ جلسه‌ای
         total_sessions = random.choice([12, 24])
         
-        # 2. Risk Profiles
+        # 2. Assign remaining sessions based on Risk Profiles
         if risk_profile == 'high_risk':
             last_checkin_days_ago = random.randint(14, 25)
             days_active = random.randint(last_checkin_days_ago + 1, 28)
@@ -68,7 +69,7 @@ def generate_data(club_id):
         else:
             last_checkin_days_ago = random.randint(0, 3)
             days_active = random.randint(last_checkin_days_ago + 1, 28)
-            remaining = random.randint(4, 12)
+            remaining = random.randint(4, min(12, total_sessions - 1))
 
         start_date = now - timedelta(days=days_active)
         end_date = start_date + timedelta(days=30)
@@ -83,33 +84,36 @@ def generate_data(club_id):
 
         sub_id = cursor.fetchone()[0]
 
-        # 4. Insert Last Checkin
-        hour = random.choice(all_hours)
-        minute = random.randint(0, 59)
-        last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
+        # 4. Calculate Exact Used Sessions & Record Attendance
+        used_sessions = total_sessions - remaining
 
-        cursor.execute("""
-            INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
-            VALUES (%s, %s, %s, %s);
-        """, (member_id, sub_id, last_checkin_time, club_id))
+        if used_sessions > 0:
+            # ثبت تردد اخیر (Last Checkin)
+            hour = random.choice(all_hours)
+            minute = random.randint(0, 59)
+            last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
 
-        # 5. Insert Past Checkins
-        used_sessions = max(0, total_sessions - remaining - 1)
-        
-        start_past_days = min(last_checkin_days_ago + 1, days_active)
-        end_past_days = days_active
-        
-        for _ in range(used_sessions):
-            past_days_ago = random.randint(start_past_days, end_past_days)
-            past_hour = random.choice(all_hours)
-            past_minute = random.randint(0, 59)
-            past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
-            
             cursor.execute("""
                 INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
                 VALUES (%s, %s, %s, %s);
-            """, (member_id, sub_id, past_checkin_time, club_id))
-            
+            """, (member_id, sub_id, last_checkin_time, club_id))
+
+            # ثبت مابقی ترددهای گذشته جهت تطابق ۱۰۰٪ تعداد ترددها با جلسات مصرف‌شده
+            past_sessions_count = used_sessions - 1
+            start_past_days = min(last_checkin_days_ago + 1, days_active)
+            end_past_days = days_active
+
+            for _ in range(past_sessions_count):
+                past_days_ago = random.randint(start_past_days, end_past_days)
+                past_hour = random.choice(all_hours)
+                past_minute = random.randint(0, 59)
+                past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
+                
+                cursor.execute("""
+                    INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+                    VALUES (%s, %s, %s, %s);
+                """, (member_id, sub_id, past_checkin_time, club_id))
+
         added_count += 1
 
     conn.commit()
