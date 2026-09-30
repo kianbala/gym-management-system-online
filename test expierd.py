@@ -33,7 +33,6 @@ def insert_expired_test_user():
     for idx, c_id in enumerate(clubs, 1):
         print(f"  {idx}. {c_id}")
     
-    selected_club_id = None
     user_input = input("\nلطفاً شناسه باشگاه (club_id) یا شماره آن را وارد کنید: ").strip()
 
     if user_input.isdigit() and 1 <= int(user_input) <= len(clubs):
@@ -45,13 +44,16 @@ def insert_expired_test_user():
 
     print(f"\n🎯 باشگاه انتخاب‌شده: '{selected_club_id}'")
 
-    # ۲. ساخت شماره همراه و کد ملی تصادفی
+    # ۲. تعیین تعداد جلسات باقی‌مانده تصادفی بین ۱ تا ۱۲ جلسه
+    remaining_sessions = random.randint(1, 12)
+
+    # ۳. ساخت شماره همراه و کد ملی تصادفی
     rand_suffix = str(random.randint(1000, 9999))
     name = f"رضا منقضی شده ({rand_suffix})"
     phone = f"0999{rand_suffix}123"
     national_id = f"99{rand_suffix}1234"
     
-    # ۳. ثبت عضو جدید در باشگاه انتخابی
+    # ۴. ثبت عضو جدید در باشگاه انتخابی
     success, msg = add_member(name, phone, national_id, selected_club_id, subscription_days=0)
     print(f"\nنتیجه ثبت عضو: {msg}")
     
@@ -63,7 +65,7 @@ def insert_expired_test_user():
     cursor = conn.cursor()
     
     try:
-        # ۴. دریافت member_id کاربر تازه ایجادشده
+        # ۵. دریافت member_id کاربر تازه ایجادشده
         cursor.execute("SELECT member_id FROM members WHERE national_id = %s AND club_id = %s;", (national_id, selected_club_id))
         member = cursor.fetchone()
         
@@ -73,14 +75,14 @@ def insert_expired_test_user():
 
         member_id = member['member_id'] if isinstance(member, dict) else member[0]
         
-        # ۵. درج یک اشتراک منقضی‌شده (تنظیم ستون صحیح remaining_sessions به جای subscription_days)
+        # ۶. درج اشتراک منقضی‌شده با جلسات باقی‌مانده (بصورت تصادفی بین ۱ تا ۱۲)
         past_start_date = (datetime.now() - timedelta(days=40)).date()
-        past_end_date = (datetime.now() - timedelta(days=10)).date()
+        past_end_date = (datetime.now() - timedelta(days=10)).date()  # ۱۰ روز پیش انقضا شده
         
         cursor.execute("""
             INSERT INTO subscriptions (member_id, club_id, remaining_sessions, start_date, end_date, status)
             VALUES (%s, %s, %s, %s, %s, 'EXPIRED');
-        """, (member_id, selected_club_id, 0, past_start_date, past_end_date))
+        """, (member_id, selected_club_id, remaining_sessions, past_start_date, past_end_date))
         
         conn.commit()
         
@@ -88,6 +90,7 @@ def insert_expired_test_user():
         print(f"👤 نام عضو: {name}")
         print(f"🆔 کد عضویت: {member_id}")
         print(f"🏢 باشگاه: {selected_club_id}")
+        print(f"🔢 جلسات باقی‌مانده: {remaining_sessions} جلسه")
         print(f"📅 تاریخ انقضا: {past_end_date} (۱۰ روز پیش)")
         print(f"🔴 وضعیت: EXPIRED")
 
