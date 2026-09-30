@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from db_manager import (
     add_member, 
@@ -135,7 +135,7 @@ if not st.session_state.logged_in and "session_club" in query_params:
         st.session_state.username = saved_username
 
 # -------------------------------------------------------------
-# ۱. صفحه ورود و ثبت‌نام باشگاه
+# ۱. صفحه ورود و ثبت‌‌نام باشگاه
 # -------------------------------------------------------------
 if not st.session_state.logged_in:
     st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
@@ -238,33 +238,22 @@ else:
             national_id = m.get("national_id", "")
             phone = m.get("phone", "")
             sub_days = m.get("subscription_days", 0) or 0
-            join_date_str = m.get("join_date")
+            sub_id = m.get("subscription_id", "-")
+            end_date_str = m.get("end_date", "-")
+            db_status = m.get("status", "EXPIRED")
 
-            if sub_days > 0:
+            if sub_id != "-":
                 package_type = "بسته ۲ | ۲۴ جلسه" if sub_days > 12 else "بسته ۱ | ۱۲ جلسه"
-                
-                expire_str = "نامشخص"
-                is_expired_by_time = False
-                if join_date_str:
-                    try:
-                        clean_join = join_date_str.split('T')[0]
-                        join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
-                        expire_dt = join_dt + timedelta(days=30)
-                        expire_str = expire_dt.isoformat()
-                        if now_date > expire_dt:
-                            is_expired_by_time = True
-                    except Exception:
-                        pass
-
-                status_str = "EXPIRED" if is_expired_by_time else "ACTIVE"
-                sub_code = str(m_id)
+                sub_code = str(sub_id)
                 sessions_left = str(sub_days)
+                expire_str = str(end_date_str)
+                status_str = db_status
             else:
                 package_type = "-"
                 sub_code = "-"
                 sessions_left = "-"
                 expire_str = "-"
-                status_str = "EXPIRED" if join_date_str else "فاقد اشتراک"
+                status_str = "فاقد اشتراک"
 
             if m_id in last_checkin_map:
                 days_absent_val = (now_date - last_checkin_map[m_id]).days
@@ -363,24 +352,14 @@ else:
         st.subheader("🚪 ثبت ورود ورزشکار و کسر جلسه")
         
         raw_members = get_all_members(club_id)
-        now_date = datetime.now().date()
         
         active_members = []
         for m in raw_members:
             sub_days = m.get("subscription_days", 0) or 0
-            join_date_str = m.get("join_date")
+            db_status = m.get("status", "EXPIRED")
             
-            is_expired = False
-            if join_date_str:
-                try:
-                    clean_join = join_date_str.split('T')[0]
-                    join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
-                    if now_date > (join_dt + timedelta(days=30)):
-                        is_expired = True
-                except Exception:
-                    pass
-            
-            if sub_days > 0 and not is_expired:
+            # ثبت ورود فقط برای کسانی امکان‌پذیر است که وضعیت ACTIVE داشته و جلسات باقی‌مانده > ۰ دارند
+            if db_status == "ACTIVE" and sub_days > 0:
                 active_members.append(m)
         
         search_input = st.text_input("🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):", placeholder="مثلاً: علی، 0912 یا کد عضویت...")
@@ -424,14 +403,13 @@ else:
                 else:
                     st.error("خطا در ثبت ورود.")
         else:
-            st.warning("هیچ عضو فعالی با این مشخصات یافت نشد.")
+            st.warning("هیچ عضو فعالی با این مشخصات و جلسات باقی‌مانده یافت نشد.")
 
     # --- بخش ۴: تخصیص بسته ---
     elif choice == "تخصیص بسته":
         st.subheader("💳 اختصاص بسته جدید به عضو")
         
         raw_members = get_all_members(club_id)
-        now_date = datetime.now().date()
 
         search_input = st.text_input("🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):", placeholder="مثلاً: حسین، 0912...", key="assign_search")
 
@@ -455,19 +433,13 @@ else:
             for m in filtered_members:
                 m_id = m.get("id")
                 sub_days = m.get("subscription_days", 0) or 0
-                join_date_str = m.get("join_date")
+                db_status = m.get("status", "EXPIRED")
 
-                is_expired = False
-                if join_date_str:
-                    try:
-                        clean_join = join_date_str.split('T')[0]
-                        join_dt = datetime.strptime(clean_join, "%Y-%m-%d").date()
-                        if now_date > (join_dt + timedelta(days=30)):
-                            is_expired = True
-                    except Exception:
-                        pass
-
-                can_assign = (sub_days <= 0 or is_expired)
+                # اجازه ثبت بسته در صورتی صادر می‌شود که:
+                # ۱. تاریخ اشتراک انقضا یافته باشد (EXPIRED)
+                # ۲. یا اشتراک فعال باشد ولی تمام جلسات آن مصرف شده باشد (sub_days <= 0)
+                can_assign = (db_status == "EXPIRED" or sub_days <= 0)
+                
                 status_text = "🟢 مجاز به تخصیص" if can_assign else f"🔴 دارای اشتراک فعال ({sub_days} جلسه)"
                 
                 label = f"👤 {m.get('name')} | 📱 {m.get('phone')} | 🆔 کد ملی: {m.get('national_id')} | {status_text}"
@@ -481,7 +453,7 @@ else:
             if can_assign:
                 st.info("✅ این کاربر آماده ثبت بسته جدید است.")
             else:
-                st.warning("⚠️ کاربر دارای اشتراک فعال است. تا زمانی که جلسات به اتمام نرسد یا ۳۰ روز منقضی نشود، امکان ثبت بسته جدید نیست.")
+                st.warning("⚠️️ کاربر دارای اشتراک فعال و دارای جلسه است. امکان ثبت بسته جدید نیست.")
 
             packages = {
                 "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان": 12,
