@@ -28,7 +28,7 @@ st.markdown("""
         font-family: 'Vazirmatn', 'Tahoma', sans-serif;
     }
 
-    /* ۱. انتقال کامل منوی کناری (Sidebar) به سمت راست */
+    /* ۱. انتقال کامل منوی کناری (Sidebar) به سمت راست و افزایش عرض آن */
     [data-testid="stAppViewContainer"] {
         flex-direction: row-reverse !important;
     }
@@ -40,6 +40,8 @@ st.markdown("""
         border-right: none !important;
         direction: rtl !important;
         text-align: right !important;
+        width: 350px !important;
+        min-width: 350px !important;
     }
 
     section[data-testid="stSidebar"][aria-expanded="false"] {
@@ -327,7 +329,7 @@ else:
             df_display = pd.DataFrame(filtered_list)
             cols_order = [
                 "کد عضویت", "نام و نام خانوادگی", "کد ملی", "شماره تماس",
-                "نوع بسته", "کد اشتراک", "جلسات باقی‌مانده", "تاریخ انقضا",
+                "نوع بسته", "کد اشتراک", "جلسات باقی‌‌مانده", "تاریخ انقضا",
                 "وضعیت", "روزهای غیبت"
             ]
             df_display = df_display[cols_order]
