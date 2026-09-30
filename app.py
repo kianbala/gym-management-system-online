@@ -24,7 +24,7 @@ st.set_page_config(page_title="سامانه مدیریت هوشمند باشگا
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. جهت‌دهی راست‌‌چین سراسری برای کل اپلیکیشن */
+    /* ۱. جهت‌دهی راست‌‌‌‌چین سراسری برای کل اپلیکیشن */
     html, body, .stApp {
         direction: rtl !important;
         text-align: right !important;
@@ -496,9 +496,9 @@ else:
         else:
             st.warning("هیچ عضوی با این مشخصات یافت نشد.")
 
-    # --- بخش ۵: تحلیل و هوش مصنوعی ---
-    elif choice == "📊 تحلیل و هوش مصنوعی":
-        st.subheader("🤖 ماژول تحلیلی و پیش‌‌بینی هوشمند ریزش اعضا")
+    # --- بخش ۵: آمار و گزارشات ---
+    elif choice == "📊 آمار و گزارشات":
+        st.subheader("🤖 ماژول تحلیلی و پیش‌‌‌‌بینی هوشمند ریزش اعضا")
         
         hourly_df = get_hourly_occupancy(club_id)
         churn_df = predict_churn_risk(club_id)
