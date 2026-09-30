@@ -20,7 +20,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL و اصلاح منوی کناری (Sidebar RTL Fix)
+# تنظیمات استایل RTL و فونت
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -48,19 +48,6 @@ st.markdown("""
     [data-testid="stMetricValue"] {
         font-size: 22px !important;
         font-weight: bold;
-    }
-
-    /* اصلاح و مخفی‌‌سازی کامل محتوای نوار کناری هنگام بسته شدن (حل مشکل خط عمودی) */
-    [data-testid="stSidebarCollapsedControl"] {
-        z-index: 100;
-    }
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        margin-right: -21rem !important;
-        margin-left: 0rem !important;
-        visibility: hidden !important;
-    }
-    section[data-testid="stSidebar"][aria-expanded="false"] * {
-        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -200,7 +187,7 @@ else:
                 expire_str = "-"
                 status_str = "EXPIRED" if join_date_str else "فاقد اشتراک"
 
-            # محاسبه روزهای غیبت
+            # محاسبه روزهای غیبت مطابق منطق لوکال
             if m_id in last_checkin_map:
                 days_absent_val = (now_date - last_checkin_map[m_id]).days
                 days_absent_str = str(max(0, days_absent_val))
@@ -256,7 +243,7 @@ else:
         else:
             st.info("هیچ عضوی با این مشخصات یافت نشد.")
 
-    # --- بخش ۲: ثبت عضو جدید ---
+    # --- بخش ۲: ثبت عضو جدید (همراه با اعتبارسنجی‌های لوکال) ---
     elif choice == "ثبت عضو جدید":
         st.subheader("➕ ثبت عضو جدید")
         with st.form("add_member_form", clear_on_submit=True):
@@ -490,6 +477,7 @@ else:
             if not churn_df.empty:
                 df_display = churn_df.copy()
                 
+                # تنظیم عنوان ستون‌ها
                 df_display = df_display.rename(columns={
                     'id': 'کد عضویت',
                     'name': 'نام ورزشکار',
@@ -500,6 +488,7 @@ else:
                     'risk_level': 'سطح ریسک'
                 })
                 
+                # جایگزینی متون کاربرپسند برای روزهای غیبت
                 if 'روزهای غیبت' in df_display.columns:
                     df_display['روزهای غیبت'] = df_display['روزهای غیبت'].apply(
                         lambda x: "بدون تردد" if (pd.isna(x) or x == 30) else f"{int(x)} روز"
@@ -510,11 +499,11 @@ else:
                 
                 df_display = df_display[display_cols].sort_values(by='نمره ریسک', ascending=False)
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
-                st.caption("💡 اعضایی که بسته‌‌شان تمام شده یا روزهای غیبت زیادی دارند، با نمره ریسک بالاتر در بالای جدول نمایش داده شده‌اند.")
+                st.caption("💡 اعضایی که بسته‌شان تمام شده یا روزهای غیبت زیادی دارند، با نمره ریسک بالاتر در بالای جدول نمایش داده شده‌اند.")
             else:
                 st.info("هیچ داده‌ای برای تحلیل یافت نشد.")
 
-    # --- بخش ۶: مدیریت و حذف ---
+    # --- بخش ۶: مدیریت و حذف (همراه با نوار پیشرفت ۵ ثانیه‌ای لوکال) ---
     elif choice == "مدیریت و حذف":
         raw_members = get_all_members(club_id)
 
@@ -551,7 +540,7 @@ else:
             st.warning("هیچ عضوی با این مشخصات یافت نشد.")
 
         st.markdown("---")
-        st.subheader("🗑️️ حذف اشتراک‌های اضافی (بدون حذف عضو)")
+        st.subheader("🗑️ حذف اشتراک‌های اضافی (بدون حذف عضو)")
 
         sub_search_term = st.text_input("🔍 جستجوی عضو جهت مدیریت/حذف اشتراک (نام، شماره تماس یا کد ملی):", key="sub_search_input")
 
