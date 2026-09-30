@@ -20,7 +20,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL (سایبار سمت راست + عرض بهینه ۲۹۰ پیکسل)
+# تنظیمات استایل RTL (پشتیبانی کامل از باز/بسته شدن سایبار بدون نوار سیاه)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -28,7 +28,7 @@ st.markdown("""
         font-family: 'Vazirmatn', 'Tahoma', sans-serif;
     }
 
-    /* ۱. انتقال کامل منوی کناری (Sidebar) به سمت راست و تنظیم عرض بهینه */
+    /* ۱. انتقال منوی کناری به سمت راست */
     [data-testid="stAppViewContainer"] {
         flex-direction: row-reverse !important;
     }
@@ -42,15 +42,21 @@ st.markdown("""
         text-align: right !important;
         width: 290px !important;
         min-width: 290px !important;
+        transition: margin-right 0.3s ease, width 0.3s ease !important;
     }
 
+    /* رفع کامل نوار سیاه سمت راست هنگام بستن منو */
     section[data-testid="stSidebar"][aria-expanded="false"] {
-        transform: translateX(100%) !important;
-        margin-right: 0 !important;
+        margin-right: -290px !important;
         margin-left: 0 !important;
+        width: 0px !important;
+        min-width: 0px !important;
+        max-width: 0px !important;
+        padding: 0 !important;
+        overflow: hidden !important;
     }
 
-    /* ۲. جلوگیری از بهم‌ریختگی ستون‌ها (st.columns) با فعال بودن سایبار راست */
+    /* ۲. جلوگیری از بهم‌ریختگی ستون‌ها (st.columns) */
     [data-testid="stHorizontalBlock"] {
         direction: rtl !important;
         flex-direction: row !important;
@@ -64,6 +70,8 @@ st.markdown("""
     .main .block-container {
         direction: rtl !important;
         text-align: right !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
 
     div[data-testid="stMarkdownContainer"] > *,
@@ -72,7 +80,7 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ۴. استایل منظم کارت‌های متریک (Metrics) */
+    /* ۴. استایل کارت‌های متریک (Metrics) */
     [data-testid="stMetric"] {
         text-align: right !important;
         direction: rtl !important;
@@ -99,7 +107,7 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ۵. تنظیم راست‌چین دیتاتفریم‌ها و سلکت‌باکس‌ها */
+    /* ۵. تنظیم جدول‌ها و سلکت‌باکس‌ها */
     .stDataFrame, div[data-baseweb="select"] {
         direction: rtl !important;
         text-align: right !important;
@@ -113,7 +121,7 @@ st.markdown("""
         overflow-x: hidden !important;
     }
 
-    /* ۶. دکمه باز/بسته کردن منو در سمت راست */
+    /* ۶. تنظیم موقعیت دکمه فلش باز/بسته کردن منو در بالا سمت راست */
     header[data-testid="stHeader"] {
         direction: rtl !important;
     }
@@ -123,12 +131,13 @@ st.markdown("""
         right: 0.5rem !important;
         left: auto !important;
         float: right !important;
+        z-index: 999999 !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# مدیریت ماندگاری ورود کاربر در مرورگر (حفظ لاگین هنگام رفرش)
+# مدیریت ماندگاری ورود کاربر در مرورگر
 # -------------------------------------------------------------
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -137,7 +146,6 @@ if 'username' not in st.session_state:
 if 'club_id' not in st.session_state:
     st.session_state.club_id = ""
 
-# بررسی پارامترهای آدرس برای بازیابی نشست پس از رفرش
 query_params = st.query_params
 if not st.session_state.logged_in and "session_club" in query_params:
     saved_club_id = query_params["session_club"]
@@ -170,7 +178,6 @@ if not st.session_state.logged_in:
                             st.session_state.username = username_input
                             st.session_state.club_id = club_id
                             
-                            # ذخیره نشست در پارامترهای آدرس مرورگر
                             st.query_params["session_club"] = club_id
                             st.query_params["session_user"] = username_input
                             
@@ -209,8 +216,6 @@ else:
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.club_id = ""
-        
-        # پاک کردن اطلاعات نشست از آدرس مرورگر
         st.query_params.clear()
         st.rerun()
 
@@ -545,7 +550,6 @@ else:
             high_risk_cnt = medium_risk_cnt = low_risk_cnt = 0
             high_pct = med_pct = low_pct = 0.0
 
-        # کارت‌های متریک پنج‌گانه
         m1, m2, m3, m4, m5 = st.columns(5)
         
         with m1:
