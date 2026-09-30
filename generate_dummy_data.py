@@ -23,12 +23,16 @@ def generate_data(club_id):
     regular_hours = [8, 9, 10, 11, 14, 15, 16, 22]
     all_hours = peak_hours + regular_hours
 
+    # لیست دقیقا ۳۰ عضوی برای تضمین نسبت ۲۰٪ بالا، ۲۰٪ متوسط و ۶۰٪ پایین
+    risk_profiles = ['high_risk'] * 6 + ['medium_risk'] * 6 + ['low_risk'] * 18
+    random.shuffle(risk_profiles)
+
     added_count = 0
-    for i in range(1, 31):
+    for i, risk_profile in enumerate(risk_profiles, 1):
         f_name = random.choice(FIRST_NAMES)
         l_name = random.choice(LAST_NAMES)
         
-        unique_seed = int(now.timestamp()) + i
+        unique_seed = int(now.timestamp()) + i + random.randint(100, 999)
         national_id = f"{1000000000 + (unique_seed * 123) % 899999999}"[:10]
         phone_number = f"0912{random.randint(1000000, 9999999)}"
 
@@ -51,45 +55,29 @@ def generate_data(club_id):
 
         total_sessions = random.choice([12, 24])
         
-        # وضعیت همگی ACTIVE است
-        sub_status = 'ACTIVE'
-
-        # ۲. تعیین الگوی رفتار براساس ریسک (۲۰٪ ریسک بالا، ۲۰٪ ریسک متوسط، ۶۰٪ ریسک پایین)
-        risk_profile = random.choices(
-            ['high_risk', 'medium_risk', 'low_risk'], 
-            weights=[0.20, 0.20, 0.60]
-        )[0]
-
+        # ۲. تعیین دقیق الگوی رفتار براساس فرمول هوش مصنوعی جهت دستیابی به بازه ریسک مورد نظر
         if risk_profile == 'high_risk':
-            # ریسک بالا (عدم مراجعه طولانی ۱۲ تا ۲۵ روز پیش یا اتمام جلسات)
-            days_active = random.randint(14, 28)
-            start_date = now - timedelta(days=days_active)
-            end_date = start_date + timedelta(days=30)
-            
-            min_days = min(12, days_active)
-            max_days = min(25, days_active)
-            last_checkin_days_ago = random.randint(min_days, max_days)
-            remaining = random.choice([0, 1])
+            # ریسک بالا (امتیاز >= ۷۰): غیبت ۱۴ تا ۲۵ روز پیش (امتیاز روزها = ۷۰)
+            last_checkin_days_ago = random.randint(14, 25)
+            days_active = random.randint(last_checkin_days_ago + 1, 28) # تاریخ شروع کمتر از ۳۰ روز پیش جهت فعال ماندن
+            remaining = random.choice([0, 1, 2])
 
         elif risk_profile == 'medium_risk':
-            # ریسک متوسط (مراجعه ۶ تا ۱۰ روز پیش و ۱ تا ۳ جلسه باقی‌مانده)
-            days_active = random.randint(7, 28)
-            start_date = now - timedelta(days=days_active)
-            end_date = start_date + timedelta(days=30)
-
-            min_days = min(6, days_active)
-            max_days = min(10, days_active)
-            last_checkin_days_ago = random.randint(min_days, max_days)
+            # ریسک متوسط (۴۰ <= امتیاز < ۷۰): غیبت ۶ تا ۹ روز پیش (امتیاز ۳۰-۴۵) + جلسات کم (امتیاز ۱۵) -> کل: ۴۵ تا ۶۰
+            last_checkin_days_ago = random.randint(6, 9)
+            days_active = random.randint(last_checkin_days_ago + 1, 28)
             remaining = random.randint(1, 3)
 
         else:
-            # ریسک پایین (مراجعه منظم ۰ تا ۳ روز پیش و جلسات کافی)
-            days_active = random.randint(1, 28)
-            start_date = now - timedelta(days=days_active)
-            end_date = start_date + timedelta(days=30)
+            # ریسک پایین (امتیاز < ۴۰): غیبت ۰ تا ۳ روز پیش (امتیاز ۰-۱۵) + جلسات کافی (امتیاز ۰) -> کل: ۰ تا ۱۵
+            last_checkin_days_ago = random.randint(0, 3)
+            days_active = random.randint(last_checkin_days_ago + 1, 28)
+            remaining = random.randint(4, 12)
 
-            last_checkin_days_ago = random.randint(0, min(3, days_active))
-            remaining = random.randint(4, total_sessions - 1)
+        # محاسبه start_date و end_date که حتماً در آینده باشد (اشتراک ACTIVE)
+        start_date = now - timedelta(days=days_active)
+        end_date = start_date + timedelta(days=30)
+        sub_status = 'ACTIVE'
 
         # ۳. درج اشتراک فعال
         cursor.execute("""
@@ -130,7 +118,8 @@ def generate_data(club_id):
         added_count += 1
 
     conn.commit()
-    print(f"✅ با موفقیت {added_count} عضو جدید فعال (۲۰٪ ریسک بالا، ۲۰٪ متوسط، ۶۰٪ پایین) برای باشگاه '{club_id}' اضافه شدند!")
+    print(f"✅ با موفقیت {added_count} عضو جدید با اشتراک فعال اضافه شدند!")
+    print(f"📊 تفکیک دقیق ریسک‌ها: ۶ عضو بالا (۲۰٪)، ۶ عضو متوسط (۲۰٪)، ۱۸ عضو پایین (۶۰٪)")
     conn.close()
 
 if __name__ == "__main__":
