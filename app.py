@@ -125,13 +125,25 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# مدیریت نشست کاربر (Session State)
+# -------------------------------------------------------------
+# مدیریت ماندگاری ورود کاربر در مرورگر (حفظ لاگین هنگام رفرش)
+# -------------------------------------------------------------
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
     st.session_state.username = ""
 if 'club_id' not in st.session_state:
     st.session_state.club_id = ""
+
+# بررسی پارامترهای آدرس برای بازیابی نشست پس از رفرش
+query_params = st.query_params
+if not st.session_state.logged_in and "session_club" in query_params:
+    saved_club_id = query_params["session_club"]
+    saved_username = query_params.get("session_user", "مدیر")
+    if saved_club_id:
+        st.session_state.logged_in = True
+        st.session_state.club_id = saved_club_id
+        st.session_state.username = saved_username
 
 # -------------------------------------------------------------
 # ۱. صفحه ورود و ثبت‌نام باشگاه
@@ -155,8 +167,13 @@ if not st.session_state.logged_in:
                             st.session_state.logged_in = True
                             st.session_state.username = username_input
                             st.session_state.club_id = club_id
+                            
+                            # ذخیره نشست در پارامترهای آدرس مرورگر
+                            st.query_params["session_club"] = club_id
+                            st.query_params["session_user"] = username_input
+                            
                             st.success(f"خوش آمدید {username_input}!")
-                            time.sleep(1)
+                            time.sleep(0.5)
                             st.rerun()
                         else:
                             st.error("نام کاربری یا رمز عبور اشتباه است.")
@@ -190,6 +207,9 @@ else:
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.club_id = ""
+        
+        # پاک کردن اطلاعات نشست از آدرس مرورگر
+        st.query_params.clear()
         st.rerun()
 
     st.sidebar.markdown("---")
