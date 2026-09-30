@@ -20,44 +20,48 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL اصلاح‌شده (حل کامل خط راست و موقعیت دکمه منو)
+# استایل RTL کامل و تمیز (بدون خراب کردن DOM استریم‌لیت)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. تنظیم فونت و جهت کلی */
-    html, body, [class*="css"] {
+    /* ۱. تنظیم فونت و جهت سراسری RTL برای کل اپلیکیشن و فرم‌ها */
+    html, body, .stApp, [data-testid="stAppViewContainer"], .main {
+        direction: rtl !important;
+        text-align: right !important;
         font-family: 'Vazirmatn', 'Tahoma', sans-serif !important;
     }
 
-    /* ۲. جابه‌جایی سایبار به سمت راست */
-    [data-testid="stAppViewContainer"] {
-        flex-direction: row-reverse !important;
-    }
-
-    section[data-testid="stSidebar"] {
+    /* ۲. انتقال تمیز سایبار به سمت راست بدون flex-reverse */
+    [data-testid="stSidebar"] {
+        position: fixed !important;
         right: 0 !important;
         left: auto !important;
+        top: 0 !important;
+        bottom: 0 !important;
         direction: rtl !important;
         text-align: right !important;
-        border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-left: 1px solid #333333 !important;
         border-right: none !important;
+        z-index: 100 !important;
     }
 
-    /* رفع کامل خط عمودی، حاشیه و متون باقی‌مانده در سمت راست هنگام بسته‌بودن منو */
-    section[data-testid="stSidebar"][aria-expanded="false"] {
+    /* نابودی کامل لکه حروف و خطوط راست هنگام بسته‌بودن سایبار */
+    [data-testid="stSidebar"][aria-expanded="false"] {
+        display: none !important;
         visibility: hidden !important;
-        border: none !important;
         width: 0px !important;
-        min-width: 0px !important;
     }
 
-    section[data-testid="stSidebar"][aria-expanded="true"] {
-        visibility: visible !important;
+    /* تنظیم فاصله محتوای اصلی وقتی سایبار باز است */
+    @media (min-width: 992px) {
+        [data-testid="stSidebar"][aria-expanded="true"] ~ section[data-testid="stMain"] {
+            margin-right: 21rem !important;
+            margin-left: 0 !important;
+        }
     }
 
-    /* ۳. انتقال قطعی دکمه فلش باز/بسته کردن منو به بالا سمت راست */
+    /* ۳. انتقال دکمه فلش باز/بسته کردن منو به گوشه بالا سمت راست */
     [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"],
     button[data-testid="stSidebarCollapseButton"] {
         right: 0.75rem !important;
         left: auto !important;
@@ -66,19 +70,21 @@ st.markdown("""
         z-index: 999999 !important;
     }
 
-    /* ۴. راست‌چین کردن محتوای اصلی و متون */
-    .main .block-container {
+    /* ۴. راست‌‌چین کردن فرم‌ها، ورودی‌ها، تب‌ها و دکمه‌ها (حتی در صفحه ورود) */
+    .stTextInput input, .stSelectbox, .stMarkdown, .stButton, div[data-baseweb="tab-list"] {
         direction: rtl !important;
         text-align: right !important;
     }
 
-    div[data-testid="stMarkdownContainer"] > *,
-    .stMarkdown, h1, h2, h3, h4, h5, h6, p, label, .stTextInput label, .stSelectbox label {
-        text-align: right !important;
+    div[data-baseweb="tab-list"] {
+        justify-content: flex-start !important;
+    }
+
+    button[data-baseweb="tab"] {
         direction: rtl !important;
     }
 
-    /* ۵. استایل تمیز جداول و کارت‌های متریک در تم تاریک */
+    /* ۵. استایل تمیز جداول و کارت‌های متریک */
     [data-testid="stDataFrame"] {
         direction: rtl !important;
         background-color: #1e1e1e !important;
@@ -514,7 +520,7 @@ else:
 
     # --- بخش ۵: تحلیل و هوش مصنوعی ---
     elif choice == "📊 تحلیل و هوش مصنوعی":
-        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند ریزش اعضا")
+        st.subheader("🤖 ماژول تحلیلی و پیش‌‌بینی هوشمند ریزش اعضا")
         
         hourly_df = get_hourly_occupancy(club_id)
         churn_df = predict_churn_risk(club_id)
