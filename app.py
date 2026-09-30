@@ -20,11 +20,11 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# استایل RTL استاندارد
+# استایل RTL استاندارد + تنظیم عرض سایبار
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. جهت‌دهی راست‌‌‌‌چین سراسری برای کل اپلیکیشن */
+    /* ۱. جهت‌دهی راست‌چین سراسری برای کل اپلیکیشن */
     html, body, .stApp {
         direction: rtl !important;
         text-align: right !important;
@@ -47,13 +47,18 @@ st.markdown("""
         max-width: 100% !important;
     }
 
-    /* ۴. تنظیم جهت سایبار */
+    /* ۴. تنظیم جهت و افزایش عرض سایبار در حالت باز */
     [data-testid="stSidebar"] {
         direction: rtl !important;
         text-align: right !important;
     }
 
-    /* ۵. راست‌‌چین کردن ورودی‌ها، تب‌ها و دکمه‌ها */
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        min-width: 340px !important;
+        max-width: 360px !important;
+    }
+
+    /* ۵. راست‌چین کردن ورودی‌ها، تب‌ها و دکمه‌ها */
     .stTextInput input, .stSelectbox, .stMarkdown, .stButton, div[data-baseweb="tab-list"] {
         direction: rtl !important;
         text-align: right !important;
@@ -498,7 +503,7 @@ else:
 
     # --- بخش ۵: آمار و گزارشات ---
     elif choice == "📊 آمار و گزارشات":
-        st.subheader("🤖 ماژول تحلیلی و پیش‌‌‌‌بینی هوشمند ریزش اعضا")
+        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند ریزش اعضا")
         
         hourly_df = get_hourly_occupancy(club_id)
         churn_df = predict_churn_risk(club_id)
