@@ -20,18 +20,25 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# استایل RTL استاندارد (بدون جدا کردن سایبار از جریان صفحه)
+# استایل RTL استاندارد
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. جهت‌دهی راست‌چین سراسری برای کل اپلیکیشن */
+    /* ۱. جهت‌دهی راست‌‌چین سراسری برای کل اپلیکیشن */
     html, body, .stApp {
         direction: rtl !important;
         text-align: right !important;
         font-family: 'Vazirmatn', 'Tahoma', sans-serif !important;
     }
 
-    /* ۲. تنظیم محتوای اصلی جهت عدم تداخل با لبه‌ها */
+    /* ۲. حذف کامل و قطعی متون عمودی سایبار هنگام بسته بودن */
+    [data-testid="stSidebar"][aria-expanded="false"] * {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+
+    /* ۳. تنظیم محتوای اصلی جهت عدم تداخل با لبه‌ها */
     .main .block-container {
         padding-top: 2rem !important;
         padding-bottom: 2rem !important;
@@ -40,13 +47,13 @@ st.markdown("""
         max-width: 100% !important;
     }
 
-    /* ۳. تنظیم جهت سایبار */
+    /* ۴. تنظیم جهت سایبار */
     [data-testid="stSidebar"] {
         direction: rtl !important;
         text-align: right !important;
     }
 
-    /* ۴. راست‌چین کردن ورودی‌ها، تب‌ها و دکمه‌ها */
+    /* ۵. راست‌‌چین کردن ورودی‌ها، تب‌ها و دکمه‌ها */
     .stTextInput input, .stSelectbox, .stMarkdown, .stButton, div[data-baseweb="tab-list"] {
         direction: rtl !important;
         text-align: right !important;
@@ -60,7 +67,7 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ۵. استایل تمیز جداول و کارت‌های متریک */
+    /* ۶. استایل تمیز جداول و کارت‌های متریک */
     [data-testid="stDataFrame"] {
         direction: rtl !important;
         background-color: #1e1e1e !important;
