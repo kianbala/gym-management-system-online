@@ -41,11 +41,11 @@ def insert_expired_test_user():
     elif user_input in clubs:
         selected_club_id = user_input
     else:
-        selected_club_id = user_input  # در صورتی که کاربر دستی وارد کرده باشد
+        selected_club_id = user_input
 
     print(f"\n🎯 باشگاه انتخاب‌شده: '{selected_club_id}'")
 
-    # ۲. ساخت شماره همراه و کد ملی تصادفی برای جلوگیری از ارور تکراری بودن
+    # ۲. ساخت شماره همراه و کد ملی تصادفی
     rand_suffix = str(random.randint(1000, 9999))
     name = f"رضا منقضی شده ({rand_suffix})"
     phone = f"0999{rand_suffix}123"
@@ -73,12 +73,12 @@ def insert_expired_test_user():
 
         member_id = member['member_id'] if isinstance(member, dict) else member[0]
         
-        # ۵. درج یک اشتراک منقضی‌شده (انقضا: ۱۰ روز پیش)
+        # ۵. درج یک اشتراک منقضی‌شده (تنظیم ستون صحیح remaining_sessions به جای subscription_days)
         past_start_date = (datetime.now() - timedelta(days=40)).date()
         past_end_date = (datetime.now() - timedelta(days=10)).date()
         
         cursor.execute("""
-            INSERT INTO subscriptions (member_id, club_id, subscription_days, start_date, end_date, status)
+            INSERT INTO subscriptions (member_id, club_id, remaining_sessions, start_date, end_date, status)
             VALUES (%s, %s, %s, %s, %s, 'EXPIRED');
         """, (member_id, selected_club_id, 0, past_start_date, past_end_date))
         
