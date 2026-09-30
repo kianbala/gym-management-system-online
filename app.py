@@ -20,15 +20,28 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL (پشتیبانی کامل از باز/بسته شدن سایبار بدون نوار سیاه)
+# تنظیمات استایل RTL پاک‌سازی‌شده و بهینه‌شده برای تم تاریک
 # -------------------------------------------------------------
 st.markdown("""
     <style>
+    /* ۱. تنظیم فونت کلی و جهت متون */
     html, body, [class*="css"] {
-        font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+        font-family: 'Vazirmatn', 'Tahoma', sans-serif !important;
     }
 
-    /* ۱. انتقال منوی کناری به سمت راست */
+    /* راست‌چین کردن محتوای متنی، عناوین و ورودی‌ها */
+    .main .block-container {
+        direction: rtl !important;
+        text-align: right !important;
+    }
+
+    div[data-testid="stMarkdownContainer"] > *,
+    .stMarkdown, h1, h2, h3, h4, h5, h6, p, label, .stTextInput label, .stSelectbox label {
+        text-align: right !important;
+        direction: rtl !important;
+    }
+
+    /* ۲. اصلاح و تمیزکاری سایبار */
     [data-testid="stAppViewContainer"] {
         flex-direction: row-reverse !important;
     }
@@ -36,68 +49,41 @@ st.markdown("""
     section[data-testid="stSidebar"] {
         right: 0 !important;
         left: auto !important;
+        direction: rtl !important;
+        text-align: right !important;
         border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-right: none !important;
+    }
+
+    /* ۳. اصلاح استایل جداول (DataFrame) جهت جلوگیری از تاریک شدن و بهم‌ریختگی Canvas */
+    [data-testid="stDataFrame"] {
         direction: rtl !important;
-        text-align: right !important;
-        width: 290px !important;
-        min-width: 290px !important;
-        transition: margin-right 0.3s ease, width 0.3s ease !important;
+        background-color: #1e1e1e !important;
+        border-radius: 8px !important;
+        padding: 4px !important;
+        border: 1px solid #333333 !important;
     }
 
-    /* رفع کامل نوار سیاه سمت راست هنگام بستن منو */
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        margin-right: -290px !important;
-        margin-left: 0 !important;
-        width: 0px !important;
-        min-width: 0px !important;
-        max-width: 0px !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-    }
-
-    /* ۲. جلوگیری از بهم‌ریختگی ستون‌ها (st.columns) */
-    [data-testid="stHorizontalBlock"] {
-        direction: rtl !important;
-        flex-direction: row !important;
-    }
-
-    [data-testid="column"] {
-        direction: rtl !important;
-    }
-
-    /* ۳. راست‌چین کردن محتوای اصلی */
-    .main .block-container {
-        direction: rtl !important;
-        text-align: right !important;
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-
-    div[data-testid="stMarkdownContainer"] > *,
-    .stMarkdown, h1, h2, h3, h4, h5, h6, p, label {
-        text-align: right !important;
-        direction: rtl !important;
-    }
-
-    /* ۴. استایل کارت‌های متریک (Metrics) */
+    /* ۴. اصلاح کارت‌های متریک (Metrics) */
     [data-testid="stMetric"] {
+        background-color: #262626 !important;
+        border: 1px solid #3a3a3a !important;
+        padding: 12px 16px !important;
+        border-radius: 8px !important;
         text-align: right !important;
         direction: rtl !important;
-        background-color: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 10px 14px;
-        border-radius: 8px;
     }
 
     [data-testid="stMetricLabel"] {
+        color: #b0b0b0 !important;
         justify-content: flex-start !important;
         direction: rtl !important;
     }
 
     [data-testid="stMetricValue"] {
-        font-size: 20px !important;
-        font-weight: bold;
+        color: #ffffff !important;
+        font-size: 22px !important;
+        font-weight: bold !important;
         text-align: right !important;
         direction: rtl !important;
     }
@@ -107,10 +93,11 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    /* ۵. تنظیم جدول‌ها و سلکت‌باکس‌ها */
-    .stDataFrame, div[data-baseweb="select"] {
-        direction: rtl !important;
-        text-align: right !important;
+    /* ۵. بهینه‌سازی دکمه‌ها و اینپوت‌ها */
+    .stButton > button {
+        width: 100% !important;
+        border-radius: 6px !important;
+        font-weight: bold !important;
     }
 
     div[data-testid="InputInstructions"] {
@@ -119,19 +106,6 @@ st.markdown("""
 
     html, body, [data-testid="stAppViewContainer"] {
         overflow-x: hidden !important;
-    }
-
-    /* ۶. تنظیم موقعیت دکمه فلش باز/بسته کردن منو در بالا سمت راست */
-    header[data-testid="stHeader"] {
-        direction: rtl !important;
-    }
-
-    [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"] {
-        right: 0.5rem !important;
-        left: auto !important;
-        float: right !important;
-        z-index: 999999 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -279,7 +253,7 @@ else:
 
                 status_str = "EXPIRED" if is_expired_by_time else "ACTIVE"
                 sub_code = str(m_id)
-                sessions_left = sub_days
+                sessions_left = str(sub_days)
             else:
                 package_type = "-"
                 sub_code = "-"
@@ -289,7 +263,7 @@ else:
 
             if m_id in last_checkin_map:
                 days_absent_val = (now_date - last_checkin_map[m_id]).days
-                days_absent_str = str(max(0, days_absent_val))
+                days_absent_str = f"{max(0, days_absent_val)} روز"
             else:
                 days_absent_str = "بدون تردد"
 
@@ -338,7 +312,13 @@ else:
                 "وضعیت", "روزهای غیبت"
             ]
             df_display = df_display[cols_order]
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            # نمایش جدول با فرمت تمیز و پشتیبانی کامل از عرض صفحه
+            st.dataframe(
+                df_display, 
+                use_container_width=True, 
+                hide_index=True
+            )
         else:
             st.info("هیچ عضوی با این مشخصات یافت نشد.")
 
@@ -354,7 +334,7 @@ else:
                 national_id = st.text_input("کد ملی (۱۰ رقمی)")
                 phone_number = st.text_input("شماره تماس (۱۱ رقمی)")
                 
-            submit = st.form_submit_button("ثبت عضو")
+            submit = st.form_submit_button("ثبت عضو", type="primary")
             
             if submit:
                 first_name_clean = first_name.strip()
