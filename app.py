@@ -20,28 +20,16 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL پاک‌سازی‌شده و بهینه‌شده برای تم تاریک
+# تنظیمات استایل RTL اصلاح‌شده (حل کامل خط راست و موقعیت دکمه منو)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. تنظیم فونت کلی و جهت متون */
+    /* ۱. تنظیم فونت و جهت کلی */
     html, body, [class*="css"] {
         font-family: 'Vazirmatn', 'Tahoma', sans-serif !important;
     }
 
-    /* راست‌چین کردن محتوای متنی، عناوین و ورودی‌ها */
-    .main .block-container {
-        direction: rtl !important;
-        text-align: right !important;
-    }
-
-    div[data-testid="stMarkdownContainer"] > *,
-    .stMarkdown, h1, h2, h3, h4, h5, h6, p, label, .stTextInput label, .stSelectbox label {
-        text-align: right !important;
-        direction: rtl !important;
-    }
-
-    /* ۲. اصلاح و تمیزکاری سایبار */
+    /* ۲. جابه‌جایی سایبار به سمت راست */
     [data-testid="stAppViewContainer"] {
         flex-direction: row-reverse !important;
     }
@@ -55,7 +43,42 @@ st.markdown("""
         border-right: none !important;
     }
 
-    /* ۳. اصلاح استایل جداول (DataFrame) جهت جلوگیری از تاریک شدن و بهم‌ریختگی Canvas */
+    /* رفع کامل خط عمودی، حاشیه و متون باقی‌مانده در سمت راست هنگام بسته‌بودن منو */
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        visibility: hidden !important;
+        border: none !important;
+        width: 0px !important;
+        min-width: 0px !important;
+    }
+
+    section[data-testid="stSidebar"][aria-expanded="true"] {
+        visibility: visible !important;
+    }
+
+    /* ۳. انتقال قطعی دکمه فلش باز/بسته کردن منو به بالا سمت راست */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    button[data-testid="stSidebarCollapseButton"] {
+        right: 0.75rem !important;
+        left: auto !important;
+        position: fixed !important;
+        top: 0.5rem !important;
+        z-index: 999999 !important;
+    }
+
+    /* ۴. راست‌چین کردن محتوای اصلی و متون */
+    .main .block-container {
+        direction: rtl !important;
+        text-align: right !important;
+    }
+
+    div[data-testid="stMarkdownContainer"] > *,
+    .stMarkdown, h1, h2, h3, h4, h5, h6, p, label, .stTextInput label, .stSelectbox label {
+        text-align: right !important;
+        direction: rtl !important;
+    }
+
+    /* ۵. استایل تمیز جداول و کارت‌های متریک در تم تاریک */
     [data-testid="stDataFrame"] {
         direction: rtl !important;
         background-color: #1e1e1e !important;
@@ -64,7 +87,6 @@ st.markdown("""
         border: 1px solid #333333 !important;
     }
 
-    /* ۴. اصلاح کارت‌های متریک (Metrics) */
     [data-testid="stMetric"] {
         background-color: #262626 !important;
         border: 1px solid #3a3a3a !important;
@@ -88,12 +110,6 @@ st.markdown("""
         direction: rtl !important;
     }
 
-    [data-testid="stMetricDelta"] {
-        justify-content: flex-start !important;
-        direction: rtl !important;
-    }
-
-    /* ۵. بهینه‌سازی دکمه‌ها و اینپوت‌ها */
     .stButton > button {
         width: 100% !important;
         border-radius: 6px !important;
@@ -312,13 +328,7 @@ else:
                 "وضعیت", "روزهای غیبت"
             ]
             df_display = df_display[cols_order]
-            
-            # نمایش جدول با فرمت تمیز و پشتیبانی کامل از عرض صفحه
-            st.dataframe(
-                df_display, 
-                use_container_width=True, 
-                hide_index=True
-            )
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
         else:
             st.info("هیچ عضوی با این مشخصات یافت نشد.")
 
