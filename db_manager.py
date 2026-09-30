@@ -11,9 +11,8 @@ if sys.stdout.encoding.lower() != 'utf-8':
     except AttributeError:
         pass
 
-# --- ۱. اتصال به Supabase Client (جهت استفاده در auth.py و ai_analytics.py) ---
+# --- ۱. اتصال به Supabase Client ---
 def init_supabase():
-    # بررسی تمام ساختارهای ممکن در Secrets برای جلوگیری از None شدن
     supabase_secrets = st.secrets.get("supabase", {})
     
     url = (
@@ -55,10 +54,10 @@ def get_connection():
         user=db_config["user"],
         password=db_config["password"],
         port=db_config["port"],
-        sslmode="require"  # برای اتصال امن به دیتابیس Supabase
+        sslmode="require"
     )
 
-# --- ۳. توابع اصلی فراخوانی‌شده توسط app.py و ai_analytics.py ---
+# --- ۳. توابع اصلی مدیریت اعضا و دیتابیس ---
 
 def add_member(full_name, phone, national_id, club_id, subscription_days=0):
     """ثبت عضو جدید در دیتابیس"""
@@ -107,11 +106,11 @@ def add_member(full_name, phone, national_id, club_id, subscription_days=0):
         return False, f"خطا در ثبت عضو: {e}"
 
 def get_all_members(club_id):
-    """دریافت لیست کلیه اعضای ثبت‌شده در باشگاه (اعم از فعال و منقضی)"""
+    """دریافت کلیه اعضا همراه با اطلاعات آخرین اشتراک (حفظ کد اشتراک و تاریخ انقضا حتی در صورت EXPIRED شدن)"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # به‌روزرسانی اشتراک‌هایی که مهلت زمانی‌شان تمام شده است
+    # به‌روزرسانی وضعیت انقضا بر اساس تاریخ
     cursor.execute("""
         UPDATE public.subscriptions 
         SET status = 'EXPIRED' 
@@ -126,13 +125,16 @@ def get_all_members(club_id):
             m.national_id,
             m.phone_number,
             m.join_date,
-            COALESCE(s.remaining_sessions, 0) AS remaining_sessions
+            COALESCE(s.remaining_sessions, 0) AS remaining_sessions,
+            COALESCE(s.subscription_id::text, '-') AS subscription_id,
+            COALESCE(s.end_date::text, '-') AS end_date,
+            COALESCE(s.status, 'EXPIRED') AS status
         FROM public.members m
         LEFT JOIN (
-            SELECT member_id, remaining_sessions,
+            SELECT member_id, subscription_id, remaining_sessions, end_date, status,
                    ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
             FROM public.subscriptions
-            WHERE club_id = %s AND status = 'ACTIVE'
+            WHERE club_id = %s
         ) s ON m.member_id = s.member_id AND s.rn = 1
         WHERE m.club_id = %s
         ORDER BY m.member_id DESC
@@ -150,13 +152,16 @@ def get_all_members(club_id):
             "national_id": r[2] if r[2] else "",
             "phone": r[3] if r[3] else "",
             "join_date": r[4].isoformat() if r[4] else None,
-            "subscription_days": r[5]
+            "subscription_days": r[5],
+            "subscription_id": r[6],
+            "end_date": r[7],
+            "status": r[8]
         })
         
     return result
 
 def get_active_members(club_id):
-    """دریافت فقط اعضایی که دارای اشتراک فعال (ACTIVE) هستند (برای استفاده در تحلیلهای هوش مصنوعی)"""
+    """دریافت فقط اعضایی که دارای اشتراک ACTIVE هستند و تاریخ انقضای آن‌ها نگذشته است (برای تحلیلهای هوش مصنوعی)"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -175,13 +180,15 @@ def get_active_members(club_id):
             m.national_id,
             m.phone_number,
             m.join_date,
-            s.remaining_sessions
+            s.remaining_sessions,
+            s.subscription_id,
+            s.end_date
         FROM public.members m
         INNER JOIN (
-            SELECT member_id, remaining_sessions,
+            SELECT member_id, subscription_id, remaining_sessions, end_date,
                    ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
             FROM public.subscriptions
-            WHERE club_id = %s AND status = 'ACTIVE'
+            WHERE club_id = %s AND status = 'ACTIVE' AND end_date >= CURRENT_DATE
         ) s ON m.member_id = s.member_id AND s.rn = 1
         WHERE m.club_id = %s
         ORDER BY m.member_id DESC
@@ -199,13 +206,16 @@ def get_active_members(club_id):
             "national_id": r[2] if r[2] else "",
             "phone": r[3] if r[3] else "",
             "join_date": r[4].isoformat() if r[4] else None,
-            "subscription_days": r[5]
+            "subscription_days": r[5],
+            "subscription_id": r[6],
+            "end_date": r[7].isoformat() if r[7] else None,
+            "status": "ACTIVE"
         })
         
     return result
 
 def update_subscription(member_id, sessions_to_add, club_id, overwrite=True):
-    """تخصیص یا به روزرسانی بسته برای عضو"""
+    """تخصیص یا به‌روزرسانی بسته برای عضو"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -232,7 +242,7 @@ def update_subscription(member_id, sessions_to_add, club_id, overwrite=True):
         return False
 
 def decrement_subscription(member_id, club_id):
-    """کسر یک جلسه از اشتراک (بدون تغییر وضعیت به EXPIRED در صورت صفر شدن جلسات)"""
+    """کسر یک جلسه از اشتراک فعال (بدون تغییر status به EXPIRED در صورت صفر شدن جلسات)"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -253,7 +263,6 @@ def decrement_subscription(member_id, club_id):
         sub_id, rem_sessions = row
         new_rem = max(0, rem_sessions - 1)
         
-        # وضعیت همچنان ACTIVE می‌ماند تا زمانی که تاریخ انقضا (end_date) بگذرد
         cursor.execute("""
             UPDATE public.subscriptions 
             SET remaining_sessions = %s 
@@ -269,7 +278,7 @@ def decrement_subscription(member_id, club_id):
         return False
 
 def clear_member_subscription(member_id, club_id):
-    """صفر کردن اشتراک فعال کاربر"""
+    """صفر کردن اشتراک فعال کاربر و تغییر وضعیت به EXPIRED"""
     conn = get_connection()
     cursor = conn.cursor()
     
