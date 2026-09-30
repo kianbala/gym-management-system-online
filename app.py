@@ -20,7 +20,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL و فونت (اصلاح‌شده)
+# تنظیمات استایل RTL و انتقال منوی کناری به سمت راست (Right Sidebar)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -28,7 +28,7 @@ st.markdown("""
         font-family: 'Tahoma', 'Vazirmatn', sans-serif;
     }
     
-    /* راست‌چین کردن متون و المان‌ها بدون به هم ریختن چیدمان اصلی */
+    /* راست‌چین کردن عمومی متون */
     div[data-testid="stMarkdownContainer"], 
     div[data-testid="stMarkdownContainer"] > *,
     .stMarkdown, h1, h2, h3, h4, h5, h6, p, label {
@@ -54,12 +54,34 @@ st.markdown("""
         font-weight: bold;
     }
 
-    /* حل مشکل درز متن و خط عمودی منوی کناری هنگام بسته شدن */
-    section[data-testid="stSidebar"] {
+    /* جلوگیری از اسکرول افقی صفحه */
+    html, body, [data-testid="stAppViewContainer"] {
         overflow-x: hidden !important;
     }
-    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
-        overflow: hidden !important;
+
+    /* ۱. انتقال کامل منوی کناری (Sidebar) به سمت راست */
+    [data-testid="stAppViewContainer"] {
+        flex-direction: row-reverse !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        right: 0 !important;
+        left: auto !important;
+        border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-right: none !important;
+    }
+
+    /* ۲. خروج تمیز منو به سمت راست در زمان بسته شدن بدون خط اضافه */
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        transform: translateX(100%) !important;
+        margin-right: 0 !important;
+        margin-left: 0 !important;
+    }
+
+    /* ۳. قرارگیری دکمه باز/بسته کردن منو در سمت راست بالای صفحه */
+    [data-testid="stSidebarCollapsedControl"] {
+        right: 0.5rem !important;
+        left: auto !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -199,7 +221,6 @@ else:
                 expire_str = "-"
                 status_str = "EXPIRED" if join_date_str else "فاقد اشتراک"
 
-            # محاسبه روزهای غیبت
             if m_id in last_checkin_map:
                 days_absent_val = (now_date - last_checkin_map[m_id]).days
                 days_absent_str = str(max(0, days_absent_val))
@@ -484,7 +505,7 @@ else:
                 st.info("داده‌ای برای تحلیل تردد وجود ندارد.")
                 
         with col2:
-            st.write("### ⚠️ گزارش هوشمند پیش‌بینی ریزش اعضا (AI Engine)")
+            st.write("### ⚠️ گزارش هوشمند پیش‌‌بینی ریزش اعضا (AI Engine)")
             
             if not churn_df.empty:
                 df_display = churn_df.copy()
@@ -509,7 +530,7 @@ else:
                 
                 df_display = df_display[display_cols].sort_values(by='نمره ریسک', ascending=False)
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
-                st.caption("💡 اعضایی که بسته‌‌‌‌شان تمام شده یا روزهای غیبت زیادی دارند، با نمره ریسک بالاتر در بالای جدول نمایش داده شده‌اند.")
+                st.caption("💡 اعضایی که بسته‌شان تمام شده یا روزهای غیبت زیادی دارند، با نمره ریسک بالاتر در بالای جدول نمایش داده شده‌اند.")
             else:
                 st.info("هیچ داده‌ای برای تحلیل یافت نشد.")
 
