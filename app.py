@@ -20,7 +20,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# استایل RTL استاندارد و تنظیم عرض سایبار
+# استایل RTL استاندارد
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -47,18 +47,10 @@ st.markdown("""
         max-width: 100% !important;
     }
 
-    /* ۴. تنظیم عرض پایه سایبار و امکان تغییر اندازه دستی (Drag & Resize) */
+    /* ۴. تنظیم جهت سایبار */
     [data-testid="stSidebar"] {
         direction: rtl !important;
         text-align: right !important;
-        min-width: 280px !important;
-        resize: horizontal !important;
-        overflow: auto !important;
-    }
-
-    /* جلوگیری از شکستن متون منو */
-    [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] {
-        white-space: nowrap !important;
     }
 
     /* ۵. راست‌‌چین کردن ورودی‌ها، تب‌ها و دکمه‌ها */
@@ -494,7 +486,7 @@ else:
             selected_package_label = st.selectbox("انتخاب بسته ورزشی:", list(packages.keys()))
             sessions_to_add = packages[selected_package_label]
 
-            if st.button("🟢 فعال‌‌سازی بسته", type="primary", disabled=not can_assign):
+            if st.button("🟢 فعال‌سازی بسته", type="primary", disabled=not can_assign):
                 if update_subscription(selected_member_id, sessions_to_add, club_id, overwrite=True):
                     st.success(f"بسته جدید ({sessions_to_add} جلسه) با موفقیت برای کاربر فعال گردید.")
                     time.sleep(1)
@@ -664,7 +656,7 @@ else:
             st.warning("هیچ عضوی با این مشخصات یافت نشد.")
 
         st.markdown("---")
-        st.subheader("⚠️️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
+        st.subheader("⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
         st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
         
         confirm_text = st.text_input("برای تایید، عبارت 'RESET' را به انگلیسی وارد کنید:")
