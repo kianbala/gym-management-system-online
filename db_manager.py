@@ -58,7 +58,7 @@ def get_connection():
         sslmode="require"  # برای اتصال امن به دیتابیس Supabase
     )
 
-# --- ۳. توابع اصلی فراخوانی‌شده توسط app.py ---
+# --- ۳. توابع اصلی فراخوانی‌شده توسط app.py و ai_analytics.py ---
 
 def add_member(full_name, phone, national_id, club_id, subscription_days=0):
     """ثبت عضو جدید در دیتابیس"""
@@ -107,10 +107,11 @@ def add_member(full_name, phone, national_id, club_id, subscription_days=0):
         return False, f"خطا در ثبت عضو: {e}"
 
 def get_all_members(club_id):
-    """دریافت لیست تمامی اعضای باشگاه همراه با اطلاعات آخرین اشتراک"""
+    """دریافت لیست کلیه اعضای ثبت‌شده در باشگاه (اعم از فعال و منقضی)"""
     conn = get_connection()
     cursor = conn.cursor()
     
+    # به‌روزرسانی اشتراک‌هایی که مهلت زمانی‌شان تمام شده است
     cursor.execute("""
         UPDATE public.subscriptions 
         SET status = 'EXPIRED' 
@@ -128,6 +129,55 @@ def get_all_members(club_id):
             COALESCE(s.remaining_sessions, 0) AS remaining_sessions
         FROM public.members m
         LEFT JOIN (
+            SELECT member_id, remaining_sessions,
+                   ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
+            FROM public.subscriptions
+            WHERE club_id = %s AND status = 'ACTIVE'
+        ) s ON m.member_id = s.member_id AND s.rn = 1
+        WHERE m.club_id = %s
+        ORDER BY m.member_id DESC
+    """
+    
+    cursor.execute(query, (club_id, club_id))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r[0],
+            "name": r[1] if r[1] else "",
+            "national_id": r[2] if r[2] else "",
+            "phone": r[3] if r[3] else "",
+            "join_date": r[4].isoformat() if r[4] else None,
+            "subscription_days": r[5]
+        })
+        
+    return result
+
+def get_active_members(club_id):
+    """دریافت فقط اعضایی که دارای اشتراک فعال (ACTIVE) هستند (برای استفاده در تحلیلهای هوش مصنوعی)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # به‌روزرسانی اشتراک‌هایی که تاریخ انقضای آن‌ها گذشته است
+    cursor.execute("""
+        UPDATE public.subscriptions 
+        SET status = 'EXPIRED' 
+        WHERE end_date < CURRENT_DATE AND status = 'ACTIVE' AND club_id = %s
+    """, (club_id,))
+    conn.commit()
+    
+    query = """
+        SELECT 
+            m.member_id,
+            m.full_name,
+            m.national_id,
+            m.phone_number,
+            m.join_date,
+            s.remaining_sessions
+        FROM public.members m
+        INNER JOIN (
             SELECT member_id, remaining_sessions,
                    ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
             FROM public.subscriptions
@@ -182,7 +232,7 @@ def update_subscription(member_id, sessions_to_add, club_id, overwrite=True):
         return False
 
 def decrement_subscription(member_id, club_id):
-    """کسر یک جلسه از اشتراک فعال عضو"""
+    """کسر یک جلسه از اشتراک (بدون تغییر وضعیت به EXPIRED در صورت صفر شدن جلسات)"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -190,7 +240,7 @@ def decrement_subscription(member_id, club_id):
         cursor.execute("""
             SELECT subscription_id, remaining_sessions 
             FROM public.subscriptions 
-            WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE' AND remaining_sessions > 0
+            WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE'
             ORDER BY subscription_id DESC
             LIMIT 1
         """, (member_id, club_id))
@@ -201,14 +251,14 @@ def decrement_subscription(member_id, club_id):
             return False
             
         sub_id, rem_sessions = row
-        new_rem = rem_sessions - 1
-        new_status = 'EXPIRED' if new_rem <= 0 else 'ACTIVE'
+        new_rem = max(0, rem_sessions - 1)
         
+        # وضعیت همچنان ACTIVE می‌ماند تا زمانی که تاریخ انقضا (end_date) بگذرد
         cursor.execute("""
             UPDATE public.subscriptions 
-            SET remaining_sessions = %s, status = %s 
+            SET remaining_sessions = %s 
             WHERE subscription_id = %s
-        """, (new_rem, new_status, sub_id))
+        """, (new_rem, sub_id))
         
         conn.commit()
         conn.close()

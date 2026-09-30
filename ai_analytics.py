@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import warnings
 from datetime import datetime
-from db_manager import get_all_members, get_attendance_logs
+from db_manager import get_active_members, get_attendance_logs
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
@@ -29,9 +29,10 @@ def get_hourly_occupancy(club_id):
         return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
 def predict_churn_risk(club_id):
-    """تحلیل ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده)"""
+    """تحلیل ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده) - صرفاً اعضای دارای اشتراک فعال"""
     try:
-        raw_members = get_all_members(club_id)
+        # فراخوانی فقط اعضای فعال به جای کلیه اعضای ثبت‌شده
+        raw_members = get_active_members(club_id)
         if not raw_members:
             return pd.DataFrame()
             
