@@ -20,7 +20,7 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL و انتقال منوی کناری به سمت راست (Right Sidebar)
+# تنظیمات استایل RTL و انتقال منوی کناری و دکمه کنترلی به سمت راست
 # -------------------------------------------------------------
 st.markdown("""
     <style>
@@ -71,17 +71,25 @@ st.markdown("""
         border-right: none !important;
     }
 
-    /* ۲. خروج تمیز منو به سمت راست در زمان بسته شدن بدون خط اضافه */
+    /* ۲. خروج تمیز منو به سمت راست در زمان بسته شدن */
     section[data-testid="stSidebar"][aria-expanded="false"] {
         transform: translateX(100%) !important;
         margin-right: 0 !important;
         margin-left: 0 !important;
     }
 
-    /* ۳. قرارگیری دکمه باز/بسته کردن منو در سمت راست بالای صفحه */
-    [data-testid="stSidebarCollapsedControl"] {
+    /* ۳. انتقال دکمه فلش باز/بسته کردن منو (Header Controls) به سمت راست */
+    header[data-testid="stHeader"] {
+        direction: rtl !important;
+        right: 0 !important;
+        left: auto !important;
+    }
+
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] {
         right: 0.5rem !important;
         left: auto !important;
+        float: right !important;
     }
     </style>
 """, unsafe_allow_html=True)
