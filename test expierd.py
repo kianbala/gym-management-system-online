@@ -13,8 +13,8 @@ def insert_expired_test_user(club_id="club_1"):
     conn = get_connection()
     cursor = conn.cursor()
     
-    # ۲. پیدا کردن ID کاربر تازه ساخته شده
-    cursor.execute("SELECT id FROM members WHERE national_id = %s AND club_id = %s;", (national_id, club_id))
+    # ۲. پیدا کردن member_id کاربر تازه ساخته شده (استفاده از member_id به جای id)
+    cursor.execute("SELECT member_id FROM members WHERE national_id = %s AND club_id = %s;", (national_id, club_id))
     member = cursor.fetchone()
     
     if not member:
@@ -22,7 +22,8 @@ def insert_expired_test_user(club_id="club_1"):
         conn.close()
         return
 
-    member_id = member['id']
+    # پشتیبانی هم از RealDictCursor (دیکشنری) و هم از Tuple معمولی
+    member_id = member['member_id'] if isinstance(member, dict) else member[0]
     
     # ۳. درج دستی یک اشتراک که تاریخ انقضایش ۱۰ روز پیش بوده است
     past_start_date = (datetime.now() - timedelta(days=40)).date()
@@ -39,5 +40,5 @@ def insert_expired_test_user(club_id="club_1"):
     print(f"📅 تاریخ انقضای ثبت‌شده: {past_end_date}")
 
 if __name__ == "__main__":
-    # کد باشگاه خود را در صورت نیاز تغییر دهید (مثلا club_1)
+    # در صورت نیاز کد باشگاه خود را چک کنید (مثلا club_1 یا هر آی‌دی که با آن وارد app می‌شوید)
     insert_expired_test_user("club_1")
