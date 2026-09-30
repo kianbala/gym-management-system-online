@@ -20,76 +20,81 @@ from auth import authenticate_user, add_user
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
 
 # -------------------------------------------------------------
-# تنظیمات استایل RTL و انتقال منوی کناری و دکمه کنترلی به سمت راست
+# تنظیمات استایل RTL اصولی و استاندارد (بدون آسیب به لایوت st.columns)
 # -------------------------------------------------------------
 st.markdown("""
     <style>
+    /* ۱. تعریف فونت و راست‌چین کلی متون */
     html, body, [class*="css"] {
-        font-family: 'Tahoma', 'Vazirmatn', sans-serif;
+        font-family: 'Vazirmatn', 'Tahoma', sans-serif;
     }
     
-    /* راست‌چین کردن عمومی متون */
-    div[data-testid="stMarkdownContainer"], 
+    .main .block-container {
+        direction: rtl !important;
+        text-align: right !important;
+    }
+
     div[data-testid="stMarkdownContainer"] > *,
     .stMarkdown, h1, h2, h3, h4, h5, h6, p, label {
         text-align: right !important;
         direction: rtl !important;
     }
-    
-    div[data-baseweb="select"] {
+
+    /* ۲. استایل منظم و تمیز کارت‌های متریک (Metrics) */
+    [data-testid="stMetric"] {
+        text-align: right !important;
+        direction: rtl !important;
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 10px 14px;
+        border-radius: 8px;
+    }
+
+    [data-testid="stMetricLabel"] {
+        justify-content: flex-start !important;
+        direction: rtl !important;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 20px !important;
+        font-weight: bold;
+        text-align: right !important;
+        direction: rtl !important;
+    }
+
+    [data-testid="stMetricDelta"] {
+        justify-content: flex-start !important;
+        direction: rtl !important;
+    }
+
+    /* ۳. تنظیم راست‌چین دیتاتفریم‌ها و سلکت‌باکس‌ها */
+    .stDataFrame, div[data-baseweb="select"] {
         direction: rtl !important;
         text-align: right !important;
     }
-    
+
     div[data-testid="InputInstructions"] {
         display: none !important;
     }
-    
-    .stDataFrame {
-        direction: rtl !important;
-    }
-    
-    [data-testid="stMetricValue"] {
-        font-size: 22px !important;
-        font-weight: bold;
-    }
 
-    /* جلوگیری از اسکرول افقی صفحه */
     html, body, [data-testid="stAppViewContainer"] {
         overflow-x: hidden !important;
     }
 
-    /* ۱. انتقال کامل منوی کناری (Sidebar) به سمت راست */
-    [data-testid="stAppViewContainer"] {
-        flex-direction: row-reverse !important;
-    }
-
-    section[data-testid="stSidebar"] {
-        right: 0 !important;
-        left: auto !important;
-        border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-right: none !important;
-    }
-
-    /* ۲. خروج تمیز منو به سمت راست در زمان بسته شدن */
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        transform: translateX(100%) !important;
-        margin-right: 0 !important;
-        margin-left: 0 !important;
-    }
-
-    /* ۳. انتقال دکمه فلش باز/بسته کردن منو (Header Controls) به سمت راست */
+    /* ۴. تنظیمات هدر و منوی کناری */
     header[data-testid="stHeader"] {
         direction: rtl !important;
-        right: 0 !important;
-        left: auto !important;
     }
 
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"] {
         right: 0.5rem !important;
         left: auto !important;
-        float: right !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        direction: rtl !important;
+        text-align: right !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -492,28 +497,27 @@ else:
             high_risk_cnt = medium_risk_cnt = low_risk_cnt = 0
             high_pct = med_pct = low_pct = 0.0
 
+        # کارت‌های متریک پنج‌گانه به صورت مرتب
         m1, m2, m3, m4, m5 = st.columns(5)
         
-        m1.metric("مجموع ترددها", f"{total_checkins} ورود")
-        m2.metric("شلوغ‌ترین زمان", peak_str)
-        m3.metric("ریسک بالا / پیگیری 🔴", f"{high_risk_cnt} نفر", f"{high_pct:.1f}% از کل اعضا", delta_color="inverse")
-        m4.metric("ریسک متوسط 🟡", f"{medium_risk_cnt} نفر", f"{med_pct:.1f}% از کل اعضا", delta_color="off")
-        m5.metric("ریسک پایین 🟢", f"{low_risk_cnt} نفر", f"{low_pct:.1f}% از کل اعضا", delta_color="normal")
+        with m1:
+            st.metric("مجموع ترددها", f"{total_checkins} ورود")
+        with m2:
+            st.metric("شلوغ‌ترین زمان", peak_str)
+        with m3:
+            st.metric("ریسک بالا 🔴", f"{high_risk_cnt} نفر", f"{high_pct:.1f}%")
+        with m4:
+            st.metric("ریسک متوسط 🟡", f"{medium_risk_cnt} نفر", f"{med_pct:.1f}%")
+        with m5:
+            st.metric("ریسک پایین 🟢", f"{low_risk_cnt} نفر", f"{low_pct:.1f}%")
         
         st.markdown("---")
         
-        col1, col2 = st.columns(2)
+        # چیدمان دو ستونه: جدول سمت راست (RTL) و نمودار سمت چپ
+        col_table, col_chart = st.columns([1, 1])
         
-        with col1:
-            st.write("### 📈 تحلیل ساعات شلوغی باشگاه")
-            if not hourly_df.empty:
-                st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
-                st.caption("پراکندگی ورود ورزشکاران در طول ۲۴ ساعت شبانه‌روز")
-            else:
-                st.info("داده‌ای برای تحلیل تردد وجود ندارد.")
-                
-        with col2:
-            st.write("### ⚠️ گزارش هوشمند پیش‌‌بینی ریزش اعضا (AI Engine)")
+        with col_table:
+            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (گزارش AI)")
             
             if not churn_df.empty:
                 df_display = churn_df.copy()
@@ -522,25 +526,31 @@ else:
                     'id': 'کد عضویت',
                     'name': 'نام ورزشکار',
                     'phone': 'شماره تماس',
-                    'subscription_days': 'جلسات باقی‌مانده',
-                    'days_since_last_checkin': 'روزهای غیبت',
+                    'subscription_days': 'جلسات',
+                    'days_since_last_checkin': 'غیبت',
                     'churn_risk_score': 'نمره ریسک',
                     'risk_level': 'سطح ریسک'
                 })
                 
-                if 'روزهای غیبت' in df_display.columns:
-                    df_display['روزهای غیبت'] = df_display['روزهای غیبت'].apply(
+                if 'غیبت' in df_display.columns:
+                    df_display['غیبت'] = df_display['غیبت'].apply(
                         lambda x: "بدون تردد" if (pd.isna(x) or x == 30) else f"{int(x)} روز"
                     )
 
-                display_cols = ['کد عضویت', 'نام ورزشکار', 'شماره تماس', 'جلسات باقی‌مانده', 'روزهای غیبت', 'نمره ریسک', 'سطح ریسک']
+                display_cols = ['کد عضویت', 'نام ورزشکار', 'شماره تماس', 'جلسات', 'غیبت', 'نمره ریسک', 'سطح ریسک']
                 display_cols = [c for c in display_cols if c in df_display.columns]
                 
                 df_display = df_display[display_cols].sort_values(by='نمره ریسک', ascending=False)
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
-                st.caption("💡 اعضایی که بسته‌شان تمام شده یا روزهای غیبت زیادی دارند، با نمره ریسک بالاتر در بالای جدول نمایش داده شده‌اند.")
             else:
                 st.info("هیچ داده‌ای برای تحلیل یافت نشد.")
+
+        with col_chart:
+            st.write("### 📈 تحلیل ساعات شلوغی باشگاه")
+            if not hourly_df.empty:
+                st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
+            else:
+                st.info("داده‌ای برای تحلیل تردد وجود ندارد.")
 
     # --- بخش ۶: مدیریت و حذف ---
     elif choice == "مدیریت و حذف":
