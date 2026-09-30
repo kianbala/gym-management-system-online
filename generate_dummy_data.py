@@ -12,11 +12,11 @@ LAST_NAMES = [
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
-def generate_data(club_id="admin"):
+def generate_data(club_id):
     conn = get_connection()
     cursor = conn.cursor()
 
-    print(f"⏳ در حال افزودن ۳۰ عضو جدید برای باشگاه '{club_id}'...")
+    print(f"\n⏳ در حال افزودن ۳۰ عضو جدید با اشتراک فعال برای باشگاه '{club_id}'...")
     now = datetime.now()
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
@@ -40,7 +40,7 @@ def generate_data(club_id="admin"):
         if cursor.fetchone():
             continue
 
-        # درج عضو جدید
+        # ۱. درج عضو جدید
         cursor.execute("""
             INSERT INTO public.members (first_name, last_name, national_id, phone_number, club_id)
             VALUES (%s, %s, %s, %s, %s)
@@ -51,46 +51,47 @@ def generate_data(club_id="admin"):
 
         total_sessions = random.choice([12, 24])
         
-        # 🎯 تعیین وضعیت اشتراک: ۸۰٪ ACTIVE و ۲۰٪ EXPIRED
-        sub_status = random.choices(['ACTIVE', 'EXPIRED'], weights=[0.80, 0.20])[0]
+        # وضعیت همگی ACTIVE است
+        sub_status = 'ACTIVE'
 
-        if sub_status == 'EXPIRED':
-            # کاربر منقضی‌شده: تاریخ شروع قدیمی (۴۵ تا ۶۰ روز پیش)
-            start_days_ago = random.randint(45, 60)
-            start_date = now - timedelta(days=start_days_ago)
+        # ۲. تعیین الگوی رفتار براساس ریسک (۲۰٪ ریسک بالا، ۲۰٪ ریسک متوسط، ۶۰٪ ریسک پایین)
+        risk_profile = random.choices(
+            ['high_risk', 'medium_risk', 'low_risk'], 
+            weights=[0.20, 0.20, 0.60]
+        )[0]
+
+        if risk_profile == 'high_risk':
+            # ریسک بالا (عدم مراجعه طولانی ۱۲ تا ۲۵ روز پیش یا اتمام جلسات)
+            days_active = random.randint(14, 28)
+            start_date = now - timedelta(days=days_active)
             end_date = start_date + timedelta(days=30)
             
-            remaining = random.choice([0, 0, 0, random.randint(1, 2)])
-            days_active = start_days_ago
-            
-            last_checkin_days_ago = random.randint(15, min(35, days_active))
-            
+            min_days = min(12, days_active)
+            max_days = min(25, days_active)
+            last_checkin_days_ago = random.randint(min_days, max_days)
+            remaining = random.choice([0, 1])
+
+        elif risk_profile == 'medium_risk':
+            # ریسک متوسط (مراجعه ۶ تا ۱۰ روز پیش و ۱ تا ۳ جلسه باقی‌مانده)
+            days_active = random.randint(7, 28)
+            start_date = now - timedelta(days=days_active)
+            end_date = start_date + timedelta(days=30)
+
+            min_days = min(6, days_active)
+            max_days = min(10, days_active)
+            last_checkin_days_ago = random.randint(min_days, max_days)
+            remaining = random.randint(1, 3)
+
         else:
-            # کاربر فعال: ثبت‌نام در طی ۲۸ روز گذشته
+            # ریسک پایین (مراجعه منظم ۰ تا ۳ روز پیش و جلسات کافی)
             days_active = random.randint(1, 28)
             start_date = now - timedelta(days=days_active)
             end_date = start_date + timedelta(days=30)
 
-            # الگوی رفتاری
-            pattern = random.choices(['regular', 'at_risk', 'churning'], weights=[0.60, 0.25, 0.15])[0]
+            last_checkin_days_ago = random.randint(0, min(3, days_active))
+            remaining = random.randint(4, total_sessions - 1)
 
-            if pattern == 'regular':
-                last_checkin_days_ago = random.randint(0, min(3, days_active))
-                remaining = random.randint(4, total_sessions - 1)
-                
-            elif pattern == 'at_risk':
-                min_days = min(6, days_active)
-                max_days = min(10, days_active)
-                last_checkin_days_ago = random.randint(min_days, max_days)
-                remaining = random.randint(1, 3)
-                
-            else: # churning
-                min_days = min(12, days_active)
-                max_days = min(25, days_active)
-                last_checkin_days_ago = random.randint(min_days, max_days)
-                remaining = 0
-
-        # درج اشتراک
+        # ۳. درج اشتراک فعال
         cursor.execute("""
             INSERT INTO public.subscriptions (member_id, remaining_sessions, start_date, end_date, status, club_id)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -99,7 +100,7 @@ def generate_data(club_id="admin"):
 
         sub_id = cursor.fetchone()[0]
 
-        # ثبت آخرین تردد
+        # ۴. ثبت آخرین تردد
         hour = random.choice(all_hours)
         minute = random.randint(0, 59)
         last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
@@ -109,7 +110,7 @@ def generate_data(club_id="admin"):
             VALUES (%s, %s, %s, %s);
         """, (member_id, sub_id, last_checkin_time, club_id))
 
-        # ثبت ترددهای گذشته به تعداد جلسات استفاده‌شده
+        # ۵. ثبت ترددهای گذشته متناسب با جلسات استفاده‌شده
         used_sessions = max(0, total_sessions - remaining - 1)
         
         start_past_days = min(last_checkin_days_ago + 1, days_active)
@@ -129,9 +130,13 @@ def generate_data(club_id="admin"):
         added_count += 1
 
     conn.commit()
-    print(f"✅ با موفقیت {added_count} عضو جدید برای باشگاه '{club_id}' در Supabase اضافه شدند!")
+    print(f"✅ با موفقیت {added_count} عضو جدید فعال (۲۰٪ ریسک بالا، ۲۰٪ متوسط، ۶۰٪ پایین) برای باشگاه '{club_id}' اضافه شدند!")
     conn.close()
 
 if __name__ == "__main__":
-    # در صورت نیاز می‌توانید اسم باشگاه را اینجا تغییر دهید
-    generate_data("admin")
+    user_input = input("لطفاً نام کاربری (username / club_id) اکانت موردنظر را وارد کنید: ").strip()
+    
+    while not user_input:
+        user_input = input("نام کاربری نمی‌تواند خالی باشد. لطفاً نام کاربری را وارد کنید: ").strip()
+        
+    generate_data(user_input)
