@@ -106,11 +106,10 @@ def add_member(full_name, phone, national_id, club_id, subscription_days=0):
         return False, f"خطا در ثبت عضو: {e}"
 
 def get_all_members(club_id):
-    """دریافت کلیه اعضا همراه با اطلاعات آخرین اشتراک (حفظ کد اشتراک و تاریخ انقضا حتی در صورت EXPIRED شدن)"""
+    """دریافت کلیه اعضا همراه با اطلاعات آخرین اشتراک"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # به‌روزرسانی وضعیت انقضا بر اساس تاریخ
     cursor.execute("""
         UPDATE public.subscriptions 
         SET status = 'EXPIRED' 
@@ -161,11 +160,10 @@ def get_all_members(club_id):
     return result
 
 def get_active_members(club_id):
-    """دریافت فقط اعضایی که دارای اشتراک ACTIVE هستند و تاریخ انقضای آن‌ها نگذشته است (برای تحلیلهای هوش مصنوعی)"""
+    """دریافت فقط اعضایی که دارای اشتراک ACTIVE هستند"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # به‌روزرسانی اشتراک‌هایی که تاریخ انقضای آن‌ها گذشته است
     cursor.execute("""
         UPDATE public.subscriptions 
         SET status = 'EXPIRED' 
@@ -242,7 +240,7 @@ def update_subscription(member_id, sessions_to_add, club_id, overwrite=True):
         return False
 
 def decrement_subscription(member_id, club_id):
-    """کسر یک جلسه از اشتراک فعال (بدون تغییر status به EXPIRED در صورت صفر شدن جلسات)"""
+    """کسر یک جلسه از اشتراک فعال"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -367,17 +365,66 @@ def get_attendance_logs(club_id):
     return logs
 
 def reset_club_data(club_id):
-    """حذف کلیه اطلاعات مربوط به یک باشگاه"""
+    """حذف کلیه اطلاعات مربوط به یک باشگاه و ریست هوشمند شمارنده شناسه (Identity Sequence)"""
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
-        cursor.execute("DELETE FROM public.checkins WHERE club_id = %s", (club_id,))
-        cursor.execute("DELETE FROM public.ai_analytics WHERE club_id = %s", (club_id,))
-        cursor.execute("DELETE FROM public.subscriptions WHERE club_id = %s", (club_id,))
-        cursor.execute("DELETE FROM public.members WHERE club_id = %s", (club_id,))
+        # ۱. حذف تمامی داده‌های وابسته به باشگاه
+        cursor.execute("DELETE FROM public.checkins WHERE club_id = %s;", (club_id,))
+        cursor.execute("DELETE FROM public.ai_analytics WHERE club_id = %s;", (club_id,))
+        cursor.execute("DELETE FROM public.subscriptions WHERE club_id = %s;", (club_id,))
+        cursor.execute("DELETE FROM public.members WHERE club_id = %s;", (club_id,))
         
+        # ۲. ریست کردن شمارنده‌های Identity بر اساس داده‌های باقی‌مانده در دیتابیس
+        reset_sequence_query = """
+        DO $$
+        DECLARE
+            seq_members text;
+            max_m_id bigint;
+            seq_subs text;
+            max_s_id bigint;
+            seq_checkins text;
+            max_c_id bigint;
+        BEGIN
+            -- ریست شمارنده اعضا (members)
+            seq_members := pg_get_serial_sequence('public.members', 'member_id');
+            IF seq_members IS NOT NULL THEN
+                SELECT MAX(member_id) INTO max_m_id FROM public.members;
+                IF max_m_id IS NULL THEN
+                    PERFORM setval(seq_members, 1, false);
+                ELSE
+                    PERFORM setval(seq_members, max_m_id, true);
+                END IF;
+            END IF;
+
+            -- ریست شمارنده اشتراک‌ها (subscriptions)
+            seq_subs := pg_get_serial_sequence('public.subscriptions', 'subscription_id');
+            IF seq_subs IS NOT NULL THEN
+                SELECT MAX(subscription_id) INTO max_s_id FROM public.subscriptions;
+                IF max_s_id IS NULL THEN
+                    PERFORM setval(seq_subs, 1, false);
+                ELSE
+                    PERFORM setval(seq_subs, max_s_id, true);
+                END IF;
+            END IF;
+
+            -- ریست شمارنده ترددها (checkins)
+            seq_checkins := pg_get_serial_sequence('public.checkins', 'checkin_id');
+            IF seq_checkins IS NOT NULL THEN
+                SELECT MAX(checkin_id) INTO max_c_id FROM public.checkins;
+                IF max_c_id IS NULL THEN
+                    PERFORM setval(seq_checkins, 1, false);
+                ELSE
+                    PERFORM setval(seq_checkins, max_c_id, true);
+                END IF;
+            END IF;
+        END $$;
+        """
+        
+        cursor.execute(reset_sequence_query)
         conn.commit()
+        cursor.close()
         conn.close()
         return True
     except Exception as e:
