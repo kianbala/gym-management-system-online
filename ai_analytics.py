@@ -2,12 +2,17 @@ import pandas as pd
 import numpy as np
 import warnings
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 from db_manager import get_active_members, get_attendance_logs, get_connection
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-TEHRAN_TZ = pytz.timezone('Asia/Tehran')
+TEHRAN_TZ = ZoneInfo('Asia/Tehran')
+
+def parse_to_tehran(dt_series):
+    """تبدیل دقیق و هوشمند سری زمان‌های Pandas به تایم‌زون تهران"""
+    parsed = pd.to_datetime(dt_series, utc=True)
+    return parsed.dt.tz_convert(TEHRAN_TZ)
 
 def get_hourly_occupancy(club_id):
     """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز (با اصلاح تایم‌زون ایران)"""
@@ -17,8 +22,8 @@ def get_hourly_occupancy(club_id):
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
         
         df = pd.DataFrame(logs)
-        # تبدیل زمان دیتابیس به تایم‌زون ایران
-        df['checkin_datetime'] = pd.to_datetime(df['check_in_time'], utc=True).dt.tz_convert(TEHRAN_TZ)
+        # تبدیل هوشمند به تایم‌زون تهران
+        df['checkin_datetime'] = parse_to_tehran(df['check_in_time'])
         df['hour'] = df['checkin_datetime'].dt.hour
         
         hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
@@ -59,7 +64,7 @@ def predict_churn_risk(club_id):
         last_checkin_map = {}
         if attendance_logs:
             df_att = pd.DataFrame(attendance_logs)
-            df_att['check_in_time'] = pd.to_datetime(df_att['check_in_time'], utc=True).dt.tz_convert(TEHRAN_TZ)
+            df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
             last_att = df_att.groupby('member_id')['check_in_time'].max().to_dict()
             last_checkin_map = last_att
 

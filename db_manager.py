@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 import sys
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from supabase import create_client, Client
 
 if sys.stdout.encoding.lower() != 'utf-8':
@@ -311,7 +312,7 @@ def delete_member(member_id, club_id):
         return False
 
 def record_attendance(member_id, club_id):
-    """ثبت تردد کاربر در جدول checkins بر اساس تایم‌زون ایران"""
+    """ثبت تردد کاربر در جدول checkins بر اساس تایم‌زون دقیق ایران"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -327,10 +328,13 @@ def record_attendance(member_id, club_id):
         row = cursor.fetchone()
         sub_id = row[0] if row else None
         
+        # استفاده از زمان صریح ایران با ZoneInfo
+        tehran_now = datetime.now(ZoneInfo("Asia/Tehran"))
+        
         cursor.execute("""
             INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
-            VALUES (%s, %s, (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Tehran'), %s)
-        """, (member_id, sub_id, club_id))
+            VALUES (%s, %s, %s, %s)
+        """, (member_id, sub_id, tehran_now, club_id))
         
         conn.commit()
         conn.close()
