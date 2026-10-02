@@ -311,7 +311,7 @@ def delete_member(member_id, club_id):
         return False
 
 def record_attendance(member_id, club_id):
-    """ثبت تردد کاربر در جدول checkins"""
+    """ثبت تردد کاربر در جدول checkins بر اساس تایم‌زون ایران"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -329,7 +329,7 @@ def record_attendance(member_id, club_id):
         
         cursor.execute("""
             INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
-            VALUES (%s, %s, NOW(), %s)
+            VALUES (%s, %s, (NOW() AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Tehran'), %s)
         """, (member_id, sub_id, club_id))
         
         conn.commit()
@@ -370,13 +370,11 @@ def reset_club_data(club_id):
     cursor = conn.cursor()
     
     try:
-        # ۱. حذف تمامی داده‌های وابسته به باشگاه
         cursor.execute("DELETE FROM public.checkins WHERE club_id = %s;", (club_id,))
         cursor.execute("DELETE FROM public.ai_analytics WHERE club_id = %s;", (club_id,))
         cursor.execute("DELETE FROM public.subscriptions WHERE club_id = %s;", (club_id,))
         cursor.execute("DELETE FROM public.members WHERE club_id = %s;", (club_id,))
         
-        # ۲. ریست کردن شمارنده‌های Identity بر اساس داده‌های باقی‌مانده در دیتابیس
         reset_sequence_query = """
         DO $$
         DECLARE
@@ -387,7 +385,6 @@ def reset_club_data(club_id):
             seq_checkins text;
             max_c_id bigint;
         BEGIN
-            -- ریست شمارنده اعضا (members)
             seq_members := pg_get_serial_sequence('public.members', 'member_id');
             IF seq_members IS NOT NULL THEN
                 SELECT MAX(member_id) INTO max_m_id FROM public.members;
@@ -398,7 +395,6 @@ def reset_club_data(club_id):
                 END IF;
             END IF;
 
-            -- ریست شمارنده اشتراک‌ها (subscriptions)
             seq_subs := pg_get_serial_sequence('public.subscriptions', 'subscription_id');
             IF seq_subs IS NOT NULL THEN
                 SELECT MAX(subscription_id) INTO max_s_id FROM public.subscriptions;
@@ -409,7 +405,6 @@ def reset_club_data(club_id):
                 END IF;
             END IF;
 
-            -- ریست شمارنده ترددها (checkins)
             seq_checkins := pg_get_serial_sequence('public.checkins', 'checkin_id');
             IF seq_checkins IS NOT NULL THEN
                 SELECT MAX(checkin_id) INTO max_c_id FROM public.checkins;
