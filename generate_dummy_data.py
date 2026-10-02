@@ -55,26 +55,32 @@ def generate_data(club_id):
         # انتخاب نوع بسته: ۱۲ یا ۲۴ جلسه‌ای
         total_sessions = random.choice([12, 24])
         
-        # 2. Assign remaining sessions based on Risk Profiles
+        # 2. Assign parameters tuned EXACTLY for ai_analytics risk ranges
         if risk_profile == 'high_risk':
-            last_checkin_days_ago = random.randint(14, 25)
-            days_active = random.randint(last_checkin_days_ago + 1, 30)
-            remaining = random.choice([0, 1, 2])
+            # Target Score >= 70
+            last_checkin_days_ago = random.randint(9, 20)
+            days_active = random.randint(last_checkin_days_ago + 1, 35)
+            remaining = random.randint(0, 3)
 
         elif risk_profile == 'medium_risk':
-            last_checkin_days_ago = random.randint(6, 9)
+            # Target Score: 40 <= Score < 70
+            if total_sessions == 12:
+                remaining = random.randint(2, 5)
+                last_checkin_days_ago = random.randint(5, 7)
+            else:  # 24 sessions
+                remaining = random.randint(13, 15)
+                last_checkin_days_ago = random.randint(3, 4)
             days_active = random.randint(last_checkin_days_ago + 1, 30)
-            remaining = random.randint(1, 3)
 
         else:  # low_risk
-            last_checkin_days_ago = random.randint(0, 3)
-            days_active = random.randint(last_checkin_days_ago + 1, 30)
-            # اگر بسته ۱۲ جلسه‌ای است: ۴ تا ۱۱ جلسه باقی‌مانده
-            # اگر بسته ۲۴ جلسه‌ای است: ۱۳ تا ۲۳ جلسه باقی‌مانده (تا در UI هم ۲۴ جلسه‌ای تشخیص داده شود)
+            # Target Score: Score < 40
             if total_sessions == 12:
-                remaining = random.randint(4, 11)
-            else:
-                remaining = random.randint(13, 23)
+                remaining = random.randint(6, 11)
+                last_checkin_days_ago = random.randint(0, 3)
+            else:  # 24 sessions
+                remaining = random.randint(16, 23)
+                last_checkin_days_ago = random.randint(0, 2)
+            days_active = random.randint(last_checkin_days_ago + 1, 30)
 
         start_date = now - timedelta(days=days_active)
         end_date = start_date + timedelta(days=30)
