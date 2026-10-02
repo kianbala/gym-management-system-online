@@ -29,7 +29,7 @@ def get_hourly_occupancy(club_id):
         return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
 def predict_churn_risk(club_id):
-    """تحلیل ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده) - صرفاً اعضای دارای اشتراک فعال"""
+    """تحلیل ریسک ریزش اعضا بر اساس مدل اول (ترکیب شدت غیبت بر اساس نوع بسته + وزن درجه دو پایان بسته)"""
     try:
         raw_members = get_active_members(club_id)
         if not raw_members:
@@ -47,6 +47,7 @@ def predict_churn_risk(club_id):
 
         now = datetime.now()
         
+        # ۱. محاسبه روزهای غیبت
         def calc_days_absent(row):
             m_id = row['id']
             if m_id in last_checkin_map:
@@ -55,28 +56,34 @@ def predict_churn_risk(club_id):
                     last_t = last_t.tz_localize(None)
                 diff = (now - last_t).days
                 return max(0, diff)
-            return 30
+            return 15  # پیش‌فرض برای افرادی که هنوز هیچ ترودی ثبت نکرده‌اند
 
         df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
         
+        # ۲. محاسبه نمره ریسک طبق فرمول مدل اول
         def calculate_risk_score(row):
             days = row['days_since_last_checkin']
             sessions = row.get('subscription_days', 0) or 0
             
-            risk_from_days = min(days * 5, 70)
+            # تشخیص نوع بسته (اگر بیش از ۱۲ جلسه داشته باشد ۲۴ جلسه‌ای، در غیر این صورت ۱۲ جلسه‌ای)
+            total_sessions = 24 if sessions > 12 else 12
             
-            if sessions <= 0:
-                risk_from_sessions = 30
-            elif sessions <= 3:
-                risk_from_sessions = 15
-            else:
-                risk_from_sessions = 0
-                
-            return float(risk_from_days + risk_from_sessions)
+            # الف) محاسبه شدت غیبت متناسب با نرخ انتظار بسته
+            expected_rate = total_sessions / 30.0  # 0.8 برای 24 جلسه و 0.4 برای 12 جلسه
+            s_absence = days * expected_rate * 15.0
+            
+            # ب) محاسبه وزن پایان بسته (تابع درجه دو)
+            progress = 1.0 - (sessions / float(total_sessions))
+            progress = max(0.0, min(1.0, progress))
+            s_lifecycle = 30.0 * (progress ** 2)
+            
+            # مجموع امتیاز (محدود به سقف ۱۰۰)
+            total_score = min(100.0, s_absence + s_lifecycle)
+            return round(float(total_score), 1)
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
         
-        # --- بخش تغییریافته: اضافه شدن ایموجی‌ها به سطوح ریسک ---
+        # ۳. نگاشت بازه‌های ریسک به برچسب‌ها
         def map_to_label(score):
             if score >= 70:
                 return '🔴 بالا (High)'
