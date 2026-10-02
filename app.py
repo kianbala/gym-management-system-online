@@ -280,7 +280,6 @@ else:
             search_dash = st.text_input("🔍 جستجوی عضو (نام، شماره، کد ملی یا کد عضویت):", placeholder="مثلاً: علی، 0912 یا کد عضویت...")
             
         with col_filter:
-            # اضافه شدن گزینه "فاقد اشتراک" به فیلتر کشویی
             selected_status = st.selectbox("فیلتر وضعیت اشتراک:", ["همه", "ACTIVE", "EXPIRED", "فاقد اشتراک"])
 
         filtered_list = processed_data
@@ -359,7 +358,6 @@ else:
             sub_days = m.get("subscription_days", 0) or 0
             db_status = m.get("status", "EXPIRED")
             
-            # ثبت ورود فقط برای کسانی امکان‌پذیر است که وضعیت ACTIVE داشته و جلسات باقی‌مانده > ۰ دارند
             if db_status == "ACTIVE" and sub_days > 0:
                 active_members.append(m)
         
@@ -436,9 +434,6 @@ else:
                 sub_days = m.get("subscription_days", 0) or 0
                 db_status = m.get("status", "EXPIRED")
 
-                # اجازه ثبت بسته در صورتی صادر می‌شود که:
-                # ۱. تاریخ اشتراک انقضا یافته باشد (EXPIRED)
-                # ۲. یا اشتراک فعال باشد ولی تمام جلسات آن مصرف شده باشد (sub_days <= 0)
                 can_assign = (db_status == "EXPIRED" or sub_days <= 0)
                 
                 status_text = "🟢 مجاز به تخصیص" if can_assign else f"🔴 دارای اشتراک فعال ({sub_days} جلسه)"
@@ -525,22 +520,23 @@ else:
             if not churn_df.empty:
                 df_display = churn_df.copy()
                 
+                # تغییر نام ستون‌ها جهت شفافیت کامل در گزارش
                 df_display = df_display.rename(columns={
                     'id': 'کد عضویت',
                     'name': 'نام ورزشکار',
                     'phone': 'شماره تماس',
-                    'subscription_days': 'جلسات',
-                    'days_since_last_checkin': 'غیبت',
+                    'subscription_days': 'جلسات باقی‌مانده',
+                    'days_since_last_checkin': 'مدت غیبت',
                     'churn_risk_score': 'نمره ریسک',
                     'risk_level': 'سطح ریسک'
                 })
                 
-                if 'غیبت' in df_display.columns:
-                    df_display['غیبت'] = df_display['غیبت'].apply(
+                if 'مدت غیبت' in df_display.columns:
+                    df_display['مدت غیبت'] = df_display['مدت غیبت'].apply(
                         lambda x: "بدون تردد" if (pd.isna(x) or x == 30) else f"{int(x)} روز"
                     )
 
-                display_cols = ['کد عضویت', 'نام ورزشکار', 'شماره تماس', 'جلسات', 'غیبت', 'نمره ریسک', 'سطح ریسک']
+                display_cols = ['کد عضویت', 'نام ورزشکار', 'شماره تماس', 'جلسات باقی‌مانده', 'مدت غیبت', 'نمره ریسک', 'سطح ریسک']
                 display_cols = [c for c in display_cols if c in df_display.columns]
                 
                 df_display = df_display[display_cols].sort_values(by='نمره ریسک', ascending=False)
