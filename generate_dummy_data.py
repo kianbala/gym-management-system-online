@@ -52,24 +52,29 @@ def generate_data(club_id):
         
         member_id = cursor.fetchone()[0]
 
-        # الزام رعایت بسته‌های ۱۲ یا ۲۴ جلسه‌ای
+        # انتخاب نوع بسته: ۱۲ یا ۲۴ جلسه‌ای
         total_sessions = random.choice([12, 24])
         
         # 2. Assign remaining sessions based on Risk Profiles
         if risk_profile == 'high_risk':
             last_checkin_days_ago = random.randint(14, 25)
-            days_active = random.randint(last_checkin_days_ago + 1, 28)
+            days_active = random.randint(last_checkin_days_ago + 1, 30)
             remaining = random.choice([0, 1, 2])
 
         elif risk_profile == 'medium_risk':
             last_checkin_days_ago = random.randint(6, 9)
-            days_active = random.randint(last_checkin_days_ago + 1, 28)
+            days_active = random.randint(last_checkin_days_ago + 1, 30)
             remaining = random.randint(1, 3)
 
-        else:
+        else:  # low_risk
             last_checkin_days_ago = random.randint(0, 3)
-            days_active = random.randint(last_checkin_days_ago + 1, 28)
-            remaining = random.randint(4, min(12, total_sessions - 1))
+            days_active = random.randint(last_checkin_days_ago + 1, 30)
+            # اگر بسته ۱۲ جلسه‌ای است: ۴ تا ۱۱ جلسه باقی‌مانده
+            # اگر بسته ۲۴ جلسه‌ای است: ۱۳ تا ۲۳ جلسه باقی‌مانده (تا در UI هم ۲۴ جلسه‌ای تشخیص داده شود)
+            if total_sessions == 12:
+                remaining = random.randint(4, 11)
+            else:
+                remaining = random.randint(13, 23)
 
         start_date = now - timedelta(days=days_active)
         end_date = start_date + timedelta(days=30)
@@ -118,7 +123,7 @@ def generate_data(club_id):
 
     conn.commit()
     print(f"✅ Successfully added {added_count} new active members!")
-    print(f"📊 Risk Distribution: 6 High (20%), 6 Medium (20%), 18 Low (60%)")
+    print(f"📊 Risk Distribution: 6 High (20%), 6 Medium (20%), 18 Low Risk (60%)")
     conn.close()
 
 if __name__ == "__main__":
