@@ -1,6 +1,9 @@
 import random
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from db_manager import get_connection
+
+TEHRAN_TZ = ZoneInfo("Asia/Tehran")
 
 FIRST_NAMES = [
     'علی', 'محمد', 'امیر', 'حسین', 'مهدی', 'رضا', 'سروش', 'آرش', 'کامران', 'نوید',
@@ -17,7 +20,8 @@ def generate_data(club_id):
     cursor = conn.cursor()
 
     print(f"\n⏳ Adding 30 new active members for club '{club_id}'...")
-    now = datetime.now()
+    # زمان جاری دقیق ایران با تایم‌زون
+    now = datetime.now(TEHRAN_TZ)
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
     regular_hours = [8, 9, 10, 11, 14, 15, 16, 22]
@@ -99,10 +103,14 @@ def generate_data(club_id):
         used_sessions = total_sessions - remaining
 
         if used_sessions > 0:
-            # ثبت تردد اخیر (Last Checkin)
+            # ثبت تردد اخیر (Last Checkin) با تایم‌زون ایران
             hour = random.choice(all_hours)
             minute = random.randint(0, 59)
-            last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(hour=hour, minute=minute)
+            
+            # تنظیم تاریخ و زمان دقیق همراه با تایم‌زون
+            last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(
+                hour=hour, minute=minute, second=0, microsecond=0, tzinfo=TEHRAN_TZ
+            )
 
             cursor.execute("""
                 INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
@@ -118,7 +126,10 @@ def generate_data(club_id):
                 past_days_ago = random.randint(start_past_days, end_past_days)
                 past_hour = random.choice(all_hours)
                 past_minute = random.randint(0, 59)
-                past_checkin_time = (now - timedelta(days=past_days_ago)).replace(hour=past_hour, minute=past_minute)
+                
+                past_checkin_time = (now - timedelta(days=past_days_ago)).replace(
+                    hour=past_hour, minute=past_minute, second=0, microsecond=0, tzinfo=TEHRAN_TZ
+                )
                 
                 cursor.execute("""
                     INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
