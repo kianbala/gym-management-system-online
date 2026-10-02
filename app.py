@@ -24,7 +24,7 @@ st.set_page_config(page_title="سامانه مدیریت هوشمند باشگا
 # -------------------------------------------------------------
 st.markdown("""
     <style>
-    /* ۱. جهت‌دهی راست‌چین سراسری برای کل اپلیکیشن */
+    /* ۱. جهت‌‌دهی راست‌چین سراسری برای کل اپلیکیشن */
     html, body, .stApp {
         direction: rtl !important;
         text-align: right !important;
@@ -191,43 +191,19 @@ else:
     # کارت شکیل و مدرن برای بخش مشخصات مدیر و نام باشگاه
     role_color = "#10B981"  # رنگ سبز زمردی برای نشان مدیر
     
-    st.sidebar.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
-        border: 1px solid #334155;
-        border-radius: 14px;
-        padding: 16px;
-        margin-bottom: 14px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        direction: rtl;
-        text-align: right;
-    ">
-        <!-- بخش مدیر -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px dashed #334155; padding-bottom: 8px;">
-            <span style="font-size: 13px; color: #94A3B8; font-weight: 500;">👤 مدیر سیستم:</span>
-            <span style="
-                background-color: {role_color}22; 
-                color: {role_color}; 
-                border: 1px solid {role_color}; 
-                padding: 2px 10px; 
-                border-radius: 20px; 
-                font-size: 12px; 
-                font-weight: bold;
-            ">{st.session_state.username}</span>
-        </div>
-        
-        <!-- بخش باشگاه -->
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-            <span style="font-size: 12px; color: #64748B; font-weight: 500;">🏢 نام / شناسه باشگاه:</span>
-            <span style="
-                font-size: 19px; 
-                color: #38BDF8; 
-                font-weight: 800; 
-                letter-spacing: 0.5px;
-            ">{st.session_state.club_id}</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    card_html = f"""
+<div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); direction: rtl; text-align: right;">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px dashed #334155; padding-bottom: 8px;">
+<span style="font-size: 13px; color: #94A3B8; font-weight: 500;">👤 مدیر سیستم:</span>
+<span style="background-color: {role_color}22; color: {role_color}; border: 1px solid {role_color}; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;">{st.session_state.username}</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<span style="font-size: 12px; color: #64748B; font-weight: 500;">🏢 نام / شناسه باشگاه:</span>
+<span style="font-size: 19px; color: #38BDF8; font-weight: 800; letter-spacing: 0.5px;">{st.session_state.club_id}</span>
+</div>
+</div>
+"""
+    st.sidebar.markdown(card_html, unsafe_allow_html=True)
     
     if st.sidebar.button("🚪 خروج"):
         st.session_state.logged_in = False
