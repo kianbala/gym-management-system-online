@@ -280,7 +280,8 @@ else:
             search_dash = st.text_input("🔍 جستجوی عضو (نام، شماره، کد ملی یا کد عضویت):", placeholder="مثلاً: علی، 0912 یا کد عضویت...")
             
         with col_filter:
-            selected_status = st.selectbox("فیلتر وضعیت اشتراک:", ["همه", "ACTIVE", "EXPIRED"])
+            # اضافه شدن گزینه "فاقد اشتراک" به فیلتر کشویی
+            selected_status = st.selectbox("فیلتر وضعیت اشتراک:", ["همه", "ACTIVE", "EXPIRED", "فاقد اشتراک"])
 
         filtered_list = processed_data
         if selected_status != "همه":
@@ -453,7 +454,7 @@ else:
             if can_assign:
                 st.info("✅ این کاربر آماده ثبت بسته جدید است.")
             else:
-                st.warning("⚠️️ کاربر دارای اشتراک فعال و دارای جلسه است. امکان ثبت بسته جدید نیست.")
+                st.warning("⚠ کاربر دارای اشتراک فعال و دارای جلسه است. امکان ثبت بسته جدید نیست.")
 
             packages = {
                 "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان": 12,
