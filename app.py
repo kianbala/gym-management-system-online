@@ -135,7 +135,7 @@ if not st.session_state.logged_in and "session_club" in query_params:
         st.session_state.username = saved_username
 
 # -------------------------------------------------------------
-# ۱. صفحه ورود و ثبت‌‌نام باشگاه
+# ۱. صفحه ورود و ثبت‌‌‌‌نام باشگاه
 # -------------------------------------------------------------
 if not st.session_state.logged_in:
     st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
@@ -520,7 +520,6 @@ else:
             if not churn_df.empty:
                 df_display = churn_df.copy()
                 
-                # تغییر نام ستون‌ها جهت شفافیت کامل در گزارش
                 df_display = df_display.rename(columns={
                     'id': 'کد عضویت',
                     'name': 'نام ورزشکار',
@@ -635,41 +634,40 @@ else:
         
         confirm_text = st.text_input("برای تایید، عبارت 'RESET' را به انگلیسی وارد کنید:")
         
-        if confirm_text.strip() == "RESET":
-            if 'reset_requested' not in st.session_state:
-                st.session_state.reset_requested = False
+        # دکمه همیشه زیر کادر قرار می‌گیرد تا کاربر برای کلیک با موس معطل نماند
+        if st.button("🚨 تایید و شروع پاکسازی دیتابیس", type="primary"):
+            if confirm_text.strip() == "RESET":
+                st.session_state.reset_requested = True
+            else:
+                st.error("⚠️ برای تایید پاکسازی، باید دقیقاً عبارت RESET را به انگلیسی در کادر بالا وارد کنید.")
 
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("🚨 شروع پاکسازی (با مهلت ۵ ثانیه انصراف)"):
-                    st.session_state.reset_requested = True
-            
-            with col2:
-                if st.session_state.reset_requested:
-                    if st.button("❌ انصراف و لغو عملیات"):
-                        st.session_state.reset_requested = False
-                        st.info("عملیات پاکسازی با موفقیت لغو شد.")
-                        time.sleep(1)
-                        st.rerun()
-
-            if st.session_state.reset_requested:
-                progress_bar = st.progress(100)
-                status_text = st.empty()
-                
-                for i in range(5, 0, -1):
-                    if not st.session_state.reset_requested:
-                        break
-                    status_text.warning(f"⚠️ پاکسازی دیتابیس تا {i} ثانیه دیگر انجام می‌شود... در صورت پشیمانی دکمه انصراف را بزنید!")
-                    progress_bar.progress(i * 20)
+        # نمایش نوار پیشرفت ۵ ثانیه‌ای و دکمه انصراف پس از کلیک روی دکمه تایید
+        if st.session_state.get('reset_requested', False):
+            col_cancel, _ = st.columns([1, 2])
+            with col_cancel:
+                if st.button("❌ انصراف و لغو عملیات"):
+                    st.session_state.reset_requested = False
+                    st.info("عملیات پاکسازی با موفقیت لغو شد.")
                     time.sleep(1)
-                    
-                if st.session_state.reset_requested:
-                    status_text.empty()
-                    progress_bar.empty()
-                    if reset_club_data(club_id):
-                        st.session_state.reset_requested = False
-                        st.success("🎉 تمامی داده‌های این باشگاه با موفقیت پاک شدند.")
-                        time.sleep(1.5)
-                        st.rerun()
-                    else:
-                        st.error("خطا در ریست دیتابیس.")
+                    st.rerun()
+
+            progress_bar = st.progress(100)
+            status_text = st.empty()
+            
+            for i in range(5, 0, -1):
+                if not st.session_state.get('reset_requested', False):
+                    break
+                status_text.warning(f"⚠️ پاکسازی دیتابیس تا {i} ثانیه دیگر انجام می‌شود... در صورت پشیمانی دکمه انصراف را بزنید!")
+                progress_bar.progress(i * 20)
+                time.sleep(1)
+                
+            if st.session_state.get('reset_requested', False):
+                status_text.empty()
+                progress_bar.empty()
+                if reset_club_data(club_id):
+                    st.session_state.reset_requested = False
+                    st.success("🎉 تمامی داده‌های این باشگاه با موفقیت پاک شدند.")
+                    time.sleep(1.5)
+                    st.rerun()
+                else:
+                    st.error("خطا در ریست دیتابیس.")
