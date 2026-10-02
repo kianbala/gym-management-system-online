@@ -31,7 +31,6 @@ def get_hourly_occupancy(club_id):
 def predict_churn_risk(club_id):
     """تحلیل ریسک ریزش اعضا (ترکیب روزهای غیبت + جلسات باقی‌مانده) - صرفاً اعضای دارای اشتراک فعال"""
     try:
-        # فراخوانی فقط اعضای فعال به جای کلیه اعضای ثبت‌شده
         raw_members = get_active_members(club_id)
         if not raw_members:
             return pd.DataFrame()
@@ -77,13 +76,14 @@ def predict_churn_risk(club_id):
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
         
+        # --- بخش تغییریافته: اضافه شدن ایموجی‌ها به سطوح ریسک ---
         def map_to_label(score):
             if score >= 70:
-                return 'بالا (High)'
+                return '🔴 بالا (High)'
             elif score >= 40:
-                return 'متوسط (Medium)'
+                return '🟡 متوسط (Medium)'
             else:
-                return 'پایین (Low)'
+                return '🟢 پایین (Low)'
                 
         df_members['risk_level'] = df_members['churn_risk_score'].apply(map_to_label)
         
