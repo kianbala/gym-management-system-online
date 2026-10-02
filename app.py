@@ -14,7 +14,11 @@ from db_manager import (
     get_attendance_logs,
     reset_club_data
 )
-from ai_analytics import get_hourly_occupancy, predict_churn_risk
+from ai_analytics import (
+    get_hourly_occupancy, 
+    predict_churn_risk, 
+    get_subscription_checkin_counts
+)
 from auth import authenticate_user, add_user
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
@@ -135,7 +139,7 @@ if not st.session_state.logged_in and "session_club" in query_params:
         st.session_state.username = saved_username
 
 # -------------------------------------------------------------
-# ۱. صفحه ورود و ثبتنام باشگاه
+# ۱. صفحه ورود و ثبت نام باشگاه
 # -------------------------------------------------------------
 if not st.session_state.logged_in:
     st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
@@ -188,8 +192,7 @@ if not st.session_state.logged_in:
 # ۲. پنل اصلی سیستم (پس از ورود)
 # -------------------------------------------------------------
 else:
-    # کارت شکیل و مدرن برای بخش مشخصات مدیر و نام باشگاه
-    role_color = "#10B981"  # رنگ سبز زمردی برای نشان مدیر
+    role_color = "#10B981"
     
     card_html = f"""
 <div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); direction: rtl; text-align: right;">
@@ -231,6 +234,7 @@ else:
         
         raw_members = get_all_members(club_id)
         attendance_logs = get_attendance_logs(club_id)
+        sub_checkins = get_subscription_checkin_counts(club_id)
         
         last_checkin_map = {}
         for log in attendance_logs:
@@ -257,7 +261,16 @@ else:
             db_status = m.get("status", "EXPIRED")
 
             if sub_id != "-":
-                package_type = "بسته ۲ | ۲۴ جلسه" if sub_days > 12 else "بسته ۱ | ۱۲ جلسه"
+                # محاسبه نوع واقعی بسته بر اساس مجموع باقی‌مانده و ترددهای انجام‌شده
+                try:
+                    s_id_key = int(sub_id)
+                except ValueError:
+                    s_id_key = sub_id
+                    
+                used_sessions = sub_checkins.get(s_id_key, 0)
+                total_capacity = sub_days + used_sessions
+                
+                package_type = "بسته ۲ | ۲۴ جلسه" if total_capacity > 12 else "بسته ۱ | ۱۲ جلسه"
                 sub_code = str(sub_id)
                 sessions_left = str(sub_days)
                 expire_str = str(end_date_str)
@@ -529,7 +542,7 @@ else:
         col_table, col_chart = st.columns([1, 1])
         
         with col_table:
-            st.write("### ⚠️ پیش‌بینی ریسک ریزش اعضا (گزارش AI)")
+            st.write("### ⚠️ پیش‌‌بینی ریسک ریزش اعضا (گزارش AI)")
             
             if not churn_df.empty:
                 df_display = churn_df.copy()
