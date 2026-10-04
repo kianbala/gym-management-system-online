@@ -19,20 +19,20 @@ def generate_data(username):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # ۱. بررسی وجود نام کاربری و استخراج club_id
+    # 1. Check user existence & retrieve club_id
     cursor.execute("SELECT club_id FROM public.users WHERE username = %s;", (username,))
     result = cursor.fetchone()
 
     if not result:
-        print(f"\n❌ خطا: نام کاربری '{username}' در سامانه یافت نشد! لطفا از وجود این کاربر مطمئن شوید.")
+        print(f"\n❌ Error: Username '{username}' not found in the system! Please ensure this user exists.")
         conn.close()
         return
 
     club_id = result[0]
-    print(f"\n✅ نام کاربری '{username}' تایید شد. (شناسه باشگاه: '{club_id}')")
-    print(f"⏳ در حال افزودن ۳۰ عضو جدید و فعال برای باشگاه '{club_id}'...")
+    print(f"\n✅ Username '{username}' verified. (Club ID: '{club_id}')")
+    print(f"⏳ Adding 30 new active members for club '{club_id}'...")
 
-    # زمان جاری دقیق ایران با تایم‌زون
+    # Exact Tehran time with timezone
     now = datetime.now(TEHRAN_TZ)
     
     peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
@@ -68,7 +68,7 @@ def generate_data(username):
         
         member_id = cursor.fetchone()[0]
 
-        # انتخاب نوع بسته: ۱۲ یا ۲۴ جلسه‌ای
+        # Select package type: 12 or 24 sessions
         total_sessions = random.choice([12, 24])
         
         # 2. Assign parameters tuned EXACTLY for ai_analytics risk ranges
@@ -115,11 +115,10 @@ def generate_data(username):
         used_sessions = total_sessions - remaining
 
         if used_sessions > 0:
-            # ثبت تردد اخیر (Last Checkin) با تایم‌زون ایران
+            # Record last check-in with Iran timezone
             hour = random.choice(all_hours)
             minute = random.randint(0, 59)
             
-            # تنظیم تاریخ و زمان دقیق همراه با تایم‌زون
             last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(
                 hour=hour, minute=minute, second=0, microsecond=0, tzinfo=TEHRAN_TZ
             )
@@ -129,7 +128,7 @@ def generate_data(username):
                 VALUES (%s, %s, %s, %s);
             """, (member_id, sub_id, last_checkin_time, club_id))
 
-            # ثبت مابقی ترددهای گذشته جهت تطابق ۱۰۰٪ تعداد ترددها با جلسات مصرف‌شده
+            # Record past check-ins
             past_sessions_count = used_sessions - 1
             start_past_days = min(last_checkin_days_ago + 1, days_active)
             end_past_days = days_active
