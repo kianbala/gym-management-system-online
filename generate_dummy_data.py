@@ -15,11 +15,23 @@ LAST_NAMES = [
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
-def generate_data(club_id):
+def generate_data(username):
     conn = get_connection()
     cursor = conn.cursor()
 
-    print(f"\n⏳ Adding 30 new active members for club '{club_id}'...")
+    # ۱. بررسی وجود نام کاربری و استخراج club_id
+    cursor.execute("SELECT club_id FROM public.users WHERE username = %s;", (username,))
+    result = cursor.fetchone()
+
+    if not result:
+        print(f"\n❌ خطا: نام کاربری '{username}' در سامانه یافت نشد! لطفا از وجود این کاربر مطمئن شوید.")
+        conn.close()
+        return
+
+    club_id = result[0]
+    print(f"\n✅ نام کاربری '{username}' تایید شد. (شناسه باشگاه: '{club_id}')")
+    print(f"⏳ در حال افزودن ۳۰ عضو جدید و فعال برای باشگاه '{club_id}'...")
+
     # زمان جاری دقیق ایران با تایم‌زون
     now = datetime.now(TEHRAN_TZ)
     
@@ -139,14 +151,14 @@ def generate_data(club_id):
         added_count += 1
 
     conn.commit()
-    print(f"✅ Successfully added {added_count} new active members!")
+    print(f"✅ Successfully added {added_count} new active members for user '{username}'!")
     print(f"📊 Risk Distribution: 6 High (20%), 6 Medium (20%), 18 Low Risk (60%)")
     conn.close()
 
 if __name__ == "__main__":
-    user_input = input("Please enter username / club_id: ").strip()
+    username_input = input("Please enter username: ").strip()
     
-    while not user_input:
-        user_input = input("Username cannot be empty. Please enter username / club_id: ").strip()
+    while not username_input:
+        username_input = input("Username cannot be empty. Please enter username: ").strip()
         
-    generate_data(user_input)
+    generate_data(username_input)
