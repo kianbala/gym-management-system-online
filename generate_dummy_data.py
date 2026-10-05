@@ -44,11 +44,13 @@ def generate_data(username):
     random.shuffle(risk_profiles)
 
     added_count = 0
-    for i, risk_profile in enumerate(risk_profiles, 1):
+    # Guaranteed loop until exactly 30 members are inserted
+    while added_count < 30:
+        risk_profile = risk_profiles[added_count]
         f_name = random.choice(FIRST_NAMES)
         l_name = random.choice(LAST_NAMES)
         
-        unique_seed = int(now.timestamp()) + i + random.randint(100, 999)
+        unique_seed = int(now.timestamp()) + added_count + random.randint(100, 99999)
         national_id = f"{1000000000 + (unique_seed * 123) % 899999999}"[:10]
         phone_number = f"0912{random.randint(1000000, 9999999)}"
 
@@ -75,7 +77,8 @@ def generate_data(username):
         if risk_profile == 'high_risk':
             # Target Score >= 70
             last_checkin_days_ago = random.randint(9, 20)
-            days_active = random.randint(last_checkin_days_ago + 1, 35)
+            # Days active bounded to max 29 days so end_date remains strictly in the future
+            days_active = random.randint(last_checkin_days_ago + 1, 29)
             remaining = random.randint(0, 3)
 
         elif risk_profile == 'medium_risk':
@@ -86,7 +89,7 @@ def generate_data(username):
             else:  # 24 sessions
                 remaining = random.randint(13, 15)
                 last_checkin_days_ago = random.randint(3, 4)
-            days_active = random.randint(last_checkin_days_ago + 1, 30)
+            days_active = random.randint(last_checkin_days_ago + 1, 29)
 
         else:  # low_risk
             # Target Score: Score < 40
@@ -96,7 +99,7 @@ def generate_data(username):
             else:  # 24 sessions
                 remaining = random.randint(16, 23)
                 last_checkin_days_ago = random.randint(0, 2)
-            days_active = random.randint(last_checkin_days_ago + 1, 30)
+            days_active = random.randint(last_checkin_days_ago + 1, 29)
 
         start_date = now - timedelta(days=days_active)
         end_date = start_date + timedelta(days=30)
