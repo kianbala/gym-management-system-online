@@ -15,40 +15,36 @@ LAST_NAMES = [
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
-def get_valid_club_id(cursor, username_or_club):
-    """فرآیند هوشمند پیدا کردن شناسه واقعی باشگاه"""
+def get_user_club_id(cursor, username):
+    """بررسی وجود مدیر در پایگاه داده و استخراج شناسه باشگاه او"""
     try:
-        # ۱. جستجو بر اساس نام کاربری
         cursor.execute(
             "SELECT club_id, id FROM public.users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s));", 
-            (username_or_club,)
+            (username,)
         )
         res = cursor.fetchone()
         if res:
-            return res[0] if res[0] is not None else res[1]
-        
-        # ۲. جستجو مستقیماً بر اساس club_id یا id
-        cursor.execute(
-            "SELECT club_id, id FROM public.users WHERE TRIM(CAST(club_id AS TEXT)) = TRIM(%s) OR TRIM(CAST(id AS TEXT)) = TRIM(%s);", 
-            (username_or_club, username_or_club)
-        )
-        res = cursor.fetchone()
-        if res:
+            # اگر club_id مقدار داشت همان را برمی‌گرداند، در غیر این صورت id کاربر را استفاده می‌کند
             return res[0] if res[0] is not None else res[1]
     except Exception as e:
-        print(f"⚠️ Warning during club ID resolution: {e}")
+        print(f"⚠️ خطا در استعلام کاربر: {e}")
     
-    return username_or_club
+    return None
 
-def generate_data(username_or_club):
+def generate_data(username):
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        club_id = get_valid_club_id(cursor, username_or_club)
+        # ۱. بررسی وجود مدیر سیستم
+        club_id = get_user_club_id(cursor, username)
 
-        print(f"\n✅ Target Club ID resolved: '{club_id}'")
-        print(f"⏳ Generating 30 dummy members & check-in logs for club '{club_id}'...")
+        if club_id is None:
+            print(f"\n❌ خطا: همچین شخصی وجود ندارد! (کاربری با نام کاربری '{username}' در پایگاه داده یافت نشد)")
+            return
+
+        print(f"\n✅ مدیر سیستم تأیید شد. شناسه باشگاه: '{club_id}'")
+        print(f"⏳ در حال ساخت ۳۰ عضو نمونه و ثبت ترددهای مربوطه...")
 
         now = datetime.now(TEHRAN_TZ)
         
@@ -77,7 +73,7 @@ def generate_data(username_or_club):
             if cursor.fetchone():
                 continue
 
-            # ۱. درج عضو
+            # درج عضو
             cursor.execute("""
                 INSERT INTO public.members (first_name, last_name, national_id, phone_number, club_id)
                 VALUES (%s, %s, %s, %s, %s)
@@ -87,7 +83,7 @@ def generate_data(username_or_club):
             member_id = cursor.fetchone()[0]
             total_sessions = random.choice([12, 24])
             
-            # ۲. تنظیم پارامترهای ریسک
+            # تنظیم پارامترهای ریسک
             if risk_profile == 'high_risk':
                 last_checkin_days_ago = random.randint(9, 20)
                 days_active = random.randint(last_checkin_days_ago + 1, 29)
@@ -115,7 +111,7 @@ def generate_data(username_or_club):
             end_date = start_date + timedelta(days=30)
             sub_status = 'ACTIVE'
 
-            # ۳. درج اشتراک
+            # درج اشتراک
             cursor.execute("""
                 INSERT INTO public.subscriptions (member_id, remaining_sessions, start_date, end_date, status, club_id)
                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -124,7 +120,7 @@ def generate_data(username_or_club):
 
             sub_id = cursor.fetchone()[0]
 
-            # ۴. درج ترددها
+            # درج ترددها
             used_sessions = total_sessions - remaining
 
             if used_sessions > 0:
@@ -167,17 +163,17 @@ def generate_data(username_or_club):
             added_count += 1
 
         conn.commit()
-        print(f"✅ Successfully added 30 members and {total_checkins_added} check-in logs for club '{club_id}'!")
+        print(f"✅ با موفقیت ۳۰ عضو و {total_checkins_added} رکورد تردد برای مدیر '{username}' (شناسه: {club_id}) ثبت شد.")
 
     except Exception as e:
         conn.rollback()
-        print(f"❌ Error during data generation: {e}")
+        print(f"❌ خطا در هنگام ثبت داده‌ها: {e}")
     finally:
         conn.close()
 
 if __name__ == "__main__":
-    username_input = input("Please enter the username or Club ID: ").strip()
+    username_input = input("لطفاً نام کاربری مدیر سیستم را وارد کنید: ").strip()
     while not username_input:
-        username_input = input("ID cannot be empty: ").strip()
+        username_input = input("نام کاربری نمی‌تواند خالی باشد: ").strip()
         
     generate_data(username_input)
