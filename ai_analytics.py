@@ -7,8 +7,17 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 TEHRAN_TZ_STR = 'Asia/Tehran'
 
+def clean_id(val):
+    """یکسان‌سازی کلیدها جهت جلوگیری از عدم تطابق int, float و str"""
+    if pd.isna(val) or val is None or val == '':
+        return None
+    try:
+        return str(int(float(val)))
+    except (ValueError, TypeError):
+        return str(val).strip()
+
 def parse_to_tehran(dt_series):
-    """تبدیل ایمن و دقیق سری زمان‌های Pandas به تایم‌‌زون تهران"""
+    """تبدیل ایمن انواع فرمت‌های زمان به تایم‌زون تهران"""
     parsed = pd.to_datetime(dt_series, utc=True, errors='coerce')
     return parsed.dt.tz_convert(TEHRAN_TZ_STR)
 
@@ -20,14 +29,16 @@ def get_hourly_occupancy(club_id):
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
         
         df = pd.DataFrame(logs)
+        if 'check_in_time' not in df.columns or df.empty:
+            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
+
         df['checkin_datetime'] = parse_to_tehran(df['check_in_time'])
-        
         df = df.dropna(subset=['checkin_datetime'])
+        
         if df.empty:
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
         df['hour'] = df['checkin_datetime'].dt.hour.astype(int)
-        
         hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
         
         all_hours = pd.DataFrame({'hour': list(range(0, 24))})
@@ -40,7 +51,7 @@ def get_hourly_occupancy(club_id):
         return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
 def get_subscription_checkin_counts(club_id):
-    """استخراج تعداد ترددهای انجام‌شده برای اشتراک‌های فعال"""
+    """استخراج تعداد ترددهای ثبت‌شده برای هر اشتراک"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -56,17 +67,16 @@ def get_subscription_checkin_counts(club_id):
         result = {}
         for r in rows:
             if r[0] is not None:
-                try:
-                    result[int(r[0])] = int(r[1])
-                except (ValueError, TypeError):
-                    result[str(r[0])] = int(r[1])
+                key = clean_id(r[0])
+                if key:
+                    result[key] = int(r[1])
         return result
     except Exception as e:
         print(f"⚠️ خطا در دریافت تعداد ترددهای اشتراک: {e}")
         return {}
 
 def predict_churn_risk(club_id):
-    """تحلیل ریسک ریزش اعضا بر اساس مدل دقیق شدت غیبت و وزن پایان بسته"""
+    """محاسبه دقیق ریسک ریزش اعضا با تطابق استاندارد کلیدها و تاریخ‌ها"""
     try:
         raw_members = get_active_members(club_id)
         if not raw_members:
@@ -78,11 +88,11 @@ def predict_churn_risk(club_id):
         last_checkin_map = {}
         if attendance_logs:
             df_att = pd.DataFrame(attendance_logs)
-            df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
-            df_att = df_att.dropna(subset=['check_in_time'])
-            if not df_att.empty:
+            if 'check_in_time' in df_att.columns and not df_att.empty:
+                df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
+                df_att = df_att.dropna(subset=['check_in_time'])
                 for _, att_row in df_att.iterrows():
-                    m_key = str(att_row.get('member_id', att_row.get('id', '')))
+                    m_key = clean_id(att_row.get('member_id', att_row.get('id', '')))
                     c_time = att_row.get('check_in_time')
                     if m_key and (m_key not in last_checkin_map or c_time > last_checkin_map[m_key]):
                         last_checkin_map[m_key] = c_time
@@ -90,19 +100,17 @@ def predict_churn_risk(club_id):
         sub_checkins = get_subscription_checkin_counts(club_id)
         now_tehran = pd.Timestamp.now(tz=TEHRAN_TZ_STR)
         
-        # ۱. محاسبه هوشمند روزهای غیبت
+        # ۱. محاسبه روزهای غیبت
         def calc_days_absent(row):
             try:
-                m_id = str(row.get('member_id', row.get('id', '')))
+                m_id = clean_id(row.get('id', row.get('member_id', '')))
 
-                # اگر کاربر حداقل یک تردد داشته باشد
                 if m_id and m_id in last_checkin_map:
                     last_t = last_checkin_map[m_id]
                     if pd.notna(last_t):
                         diff = (now_tehran - last_t).days
                         return max(0, int(diff))
                 
-                # اگر کاربر هیچ ترددی نداشته باشد، محاسبه غیبت بر اساس تاریخ ثبت‌نام
                 join_date_val = row.get('join_date')
                 if join_date_val:
                     join_dt = pd.to_datetime(join_date_val, errors='coerce')
@@ -120,28 +128,21 @@ def predict_churn_risk(club_id):
 
         df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
         
-        # ۲. محاسبه نمره ریسک
+        # ۲. محاسبه نمره ریسک ریزش
         def calculate_risk_score(row):
             try:
                 days = row.get('days_since_last_checkin', 0)
                 if pd.isna(days):
                     days = 0
 
-                remaining = row.get('remaining_sessions', row.get('subscription_days', 0))
+                remaining = row.get('subscription_days', row.get('remaining_sessions', 0))
                 if pd.isna(remaining) or remaining is None:
                     remaining = 0
                 else:
                     remaining = float(remaining)
 
-                sub_id = row.get('subscription_id')
-                sub_id_key = None
-                if sub_id is not None and not pd.isna(sub_id):
-                    try:
-                        sub_id_key = int(sub_id)
-                    except (ValueError, TypeError):
-                        sub_id_key = str(sub_id)
-                    
-                used_sessions = sub_checkins.get(sub_id_key, 0) if sub_id_key is not None else 0
+                sub_id_key = clean_id(row.get('subscription_id'))
+                used_sessions = sub_checkins.get(sub_id_key, 0) if sub_id_key else 0
                 calculated_total = remaining + used_sessions
                 
                 total_sessions = 24.0 if calculated_total > 12 else 12.0
@@ -160,7 +161,7 @@ def predict_churn_risk(club_id):
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
         
-        # ۳. نگاشت برچسب‌ها
+        # ۳. دسته‌بندی ریسک
         def map_to_label(score):
             if score >= 70:
                 return '🔴 بالا (High)'

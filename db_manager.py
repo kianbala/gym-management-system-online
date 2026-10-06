@@ -146,15 +146,16 @@ def get_all_members(club_id):
     
     result = []
     for r in rows:
+        join_dt = r[4].isoformat() if hasattr(r[4], 'isoformat') else str(r[4]) if r[4] else None
         result.append({
             "id": r[0],
             "name": r[1] if r[1] else "",
             "national_id": r[2] if r[2] else "",
             "phone": r[3] if r[3] else "",
-            "join_date": r[4].isoformat() if r[4] else None,
+            "join_date": join_dt,
             "subscription_days": r[5],
-            "subscription_id": r[6],
-            "end_date": r[7],
+            "subscription_id": str(r[6]),
+            "end_date": str(r[7]),
             "status": r[8]
         })
         
@@ -199,15 +200,17 @@ def get_active_members(club_id):
     
     result = []
     for r in rows:
+        join_dt = r[4].isoformat() if hasattr(r[4], 'isoformat') else str(r[4]) if r[4] else None
+        end_dt = r[7].isoformat() if hasattr(r[7], 'isoformat') else str(r[7]) if r[7] else None
         result.append({
             "id": r[0],
             "name": r[1] if r[1] else "",
             "national_id": r[2] if r[2] else "",
             "phone": r[3] if r[3] else "",
-            "join_date": r[4].isoformat() if r[4] else None,
+            "join_date": join_dt,
             "subscription_days": r[5],
-            "subscription_id": r[6],
-            "end_date": r[7].isoformat() if r[7] else None,
+            "subscription_id": str(r[6]),
+            "end_date": end_dt,
             "status": "ACTIVE"
         })
         
@@ -328,7 +331,6 @@ def record_attendance(member_id, club_id):
         row = cursor.fetchone()
         sub_id = row[0] if row else None
         
-        # استفاده از زمان صریح ایران با ZoneInfo
         tehran_now = datetime.now(ZoneInfo("Asia/Tehran"))
         
         cursor.execute("""
@@ -345,7 +347,7 @@ def record_attendance(member_id, club_id):
         return False
 
 def get_attendance_logs(club_id):
-    """دریافت لیست ترددها"""
+    """دریافت لیست ترددها با پشتیبانی ایمن از انواع داده زمان"""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -361,9 +363,18 @@ def get_attendance_logs(club_id):
     
     logs = []
     for r in rows:
+        c_time = r[1]
+        if c_time is not None:
+            if hasattr(c_time, 'isoformat'):
+                c_time_str = c_time.isoformat()
+            else:
+                c_time_str = str(c_time)
+        else:
+            c_time_str = None
+
         logs.append({
             "member_id": r[0],
-            "check_in_time": r[1].isoformat() if r[1] else None
+            "check_in_time": c_time_str
         })
         
     return logs
