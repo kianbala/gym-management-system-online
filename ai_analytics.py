@@ -8,7 +8,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 TEHRAN_TZ_STR = 'Asia/Tehran'
 
 def parse_to_tehran(dt_series):
-    """تبدیل ایمن و دقیق سری زمان‌های Pandas به تایم‌زون تهران"""
+    """تبدیل ایمن و دقیق سری زمان‌های Pandas به تایم‌‌زون تهران"""
     parsed = pd.to_datetime(dt_series, utc=True, errors='coerce')
     return parsed.dt.tz_convert(TEHRAN_TZ_STR)
 
@@ -22,7 +22,6 @@ def get_hourly_occupancy(club_id):
         df = pd.DataFrame(logs)
         df['checkin_datetime'] = parse_to_tehran(df['check_in_time'])
         
-        # حذف رکوردهای زمان نامعتبر
         df = df.dropna(subset=['checkin_datetime'])
         if df.empty:
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
@@ -82,7 +81,6 @@ def predict_churn_risk(club_id):
             df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
             df_att = df_att.dropna(subset=['check_in_time'])
             if not df_att.empty:
-                # یکسان‌سازی کلید شناسه‌ها به صورت str جهت جلوگیری از عدم تطابق int و str
                 for _, att_row in df_att.iterrows():
                     m_key = str(att_row.get('member_id', att_row.get('id', '')))
                     c_time = att_row.get('check_in_time')
@@ -92,31 +90,43 @@ def predict_churn_risk(club_id):
         sub_checkins = get_subscription_checkin_counts(club_id)
         now_tehran = pd.Timestamp.now(tz=TEHRAN_TZ_STR)
         
-        # ۱. محاسبه روزهای غیبت با پشتیبانی از هر دو کلید member_id و id
+        # ۱. محاسبه هوشمند روزهای غیبت
         def calc_days_absent(row):
             try:
                 m_id = str(row.get('member_id', row.get('id', '')))
 
+                # اگر کاربر حداقل یک تردد داشته باشد
                 if m_id and m_id in last_checkin_map:
                     last_t = last_checkin_map[m_id]
-                    if pd.isna(last_t):
-                        return 15
-                    diff = (now_tehran - last_t).days
-                    return max(0, int(diff))
-                return 15
+                    if pd.notna(last_t):
+                        diff = (now_tehran - last_t).days
+                        return max(0, int(diff))
+                
+                # اگر کاربر هیچ ترددی نداشته باشد، محاسبه غیبت بر اساس تاریخ ثبت‌نام
+                join_date_val = row.get('join_date')
+                if join_date_val:
+                    join_dt = pd.to_datetime(join_date_val, errors='coerce')
+                    if pd.notna(join_dt):
+                        if join_dt.tzinfo is None:
+                            join_dt = join_dt.tz_localize(TEHRAN_TZ_STR)
+                        else:
+                            join_dt = join_dt.tz_convert(TEHRAN_TZ_STR)
+                        diff = (now_tehran - join_dt).days
+                        return max(0, int(diff))
+
+                return 0
             except Exception:
-                return 15
+                return 0
 
         df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
         
         # ۲. محاسبه نمره ریسک
         def calculate_risk_score(row):
             try:
-                days = row.get('days_since_last_checkin', 15)
+                days = row.get('days_since_last_checkin', 0)
                 if pd.isna(days):
-                    days = 15
+                    days = 0
 
-                # پشتیبانی هم‌زمان از نام ستون‌های remaining_sessions و subscription_days
                 remaining = row.get('remaining_sessions', row.get('subscription_days', 0))
                 if pd.isna(remaining) or remaining is None:
                     remaining = 0
@@ -146,7 +156,7 @@ def predict_churn_risk(club_id):
                 total_score = min(100.0, s_absence + s_lifecycle)
                 return round(float(total_score), 1)
             except Exception:
-                return 50.0
+                return 0.0
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
         
