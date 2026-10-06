@@ -1,28 +1,26 @@
 import pandas as pd
 import numpy as np
 import warnings
-from datetime import datetime
-from zoneinfo import ZoneInfo
 from db_manager import get_active_members, get_attendance_logs, get_connection
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-TEHRAN_TZ = ZoneInfo('Asia/Tehran')
+# تعریف نام استاندارد تایم‌زون به صورت متنی برای پانداس
+TEHRAN_TZ_STR = 'Asia/Tehran'
 
 def parse_to_tehran(dt_series):
     """تبدیل دقیق و هوشمند سری زمان‌های Pandas به تایم‌زون تهران"""
     parsed = pd.to_datetime(dt_series, utc=True)
-    return parsed.dt.tz_convert(TEHRAN_TZ)
+    return parsed.dt.tz_convert(TEHRAN_TZ_STR)
 
 def get_hourly_occupancy(club_id):
-    """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز (با اصلاح تایم‌زون ایران)"""
+    """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز"""
     try:
         logs = get_attendance_logs(club_id)
         if not logs:
             return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
         
         df = pd.DataFrame(logs)
-        # تبدیل هوشمند به تایم‌زون تهران
         df['checkin_datetime'] = parse_to_tehran(df['check_in_time'])
         df['hour'] = df['checkin_datetime'].dt.hour
         
@@ -38,7 +36,7 @@ def get_hourly_occupancy(club_id):
         return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
 
 def get_subscription_checkin_counts(club_id):
-    """استخراج تعداد ترددهای انجام‌شده برای اشتراک‌های فعال جهت تشخیص دقیق نوع بسته"""
+    """استخراج تعداد ترددهای انجام‌شده برای اشتراک‌های فعال"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -49,7 +47,16 @@ def get_subscription_checkin_counts(club_id):
     """, (club_id,))
     rows = cursor.fetchall()
     conn.close()
-    return {r[0]: r[1] for r in rows}
+    
+    # تبدیل صریح کلیدها به int جهت اطمینان از همخوانی تایپ‌ها
+    result = {}
+    for r in rows:
+        if r[0] is not None:
+            try:
+                result[int(r[0])] = int(r[1])
+            except (ValueError, TypeError):
+                result[r[0]] = int(r[1])
+    return result
 
 def predict_churn_risk(club_id):
     """تحلیل ریسک ریزش اعضا بر اساس مدل دقیق شدت غیبت و وزن پایان بسته"""
@@ -69,7 +76,9 @@ def predict_churn_risk(club_id):
             last_checkin_map = last_att
 
         sub_checkins = get_subscription_checkin_counts(club_id)
-        now_tehran = datetime.now(TEHRAN_TZ)
+        
+        # استفاده از Timestamp همگام با پانداس برای جلوگیری از خطای تفریق
+        now_tehran = pd.Timestamp.now(tz=TEHRAN_TZ_STR)
         
         # ۱. محاسبه روزهای غیبت با تایم‌زون دقیق
         def calc_days_absent(row):
@@ -88,8 +97,12 @@ def predict_churn_risk(club_id):
             remaining = row.get('subscription_days', 0) or 0
             sub_id = row.get('subscription_id')
             
-            # محاسبه دقیق ظرفیت کل بسته (جلسات باقی‌مانده + ترددهای انجام شده)
-            used_sessions = sub_checkins.get(sub_id, 0)
+            try:
+                sub_id_key = int(sub_id) if sub_id is not None else None
+            except (ValueError, TypeError):
+                sub_id_key = sub_id
+                
+            used_sessions = sub_checkins.get(sub_id_key, 0)
             calculated_total = remaining + used_sessions
             
             # تشخیص قطعی نوع بسته (۱۲ یا ۲۴)
