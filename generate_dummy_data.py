@@ -19,7 +19,7 @@ def generate_data(username_or_club):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # پیدا کردن شناسه باشگاه
+    # Find club ID
     cursor.execute("SELECT club_id FROM public.users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s));", (username_or_club,))
     result = cursor.fetchone()
 
@@ -28,8 +28,8 @@ def generate_data(username_or_club):
     else:
         club_id = username_or_club
 
-    print(f"\n✅ شناسه باشگاه تایید شد: '{club_id}'")
-    print(f"⏳ در حال افزودن ۳۰ عضو جدید فرضی برای باشگاه '{club_id}'...")
+    print(f"\n✅ Club ID verified: '{club_id}'")
+    print(f"⏳ Adding 30 dummy members for club '{club_id}'...")
 
     now = datetime.now(TEHRAN_TZ)
     
@@ -56,7 +56,7 @@ def generate_data(username_or_club):
         if cursor.fetchone():
             continue
 
-        # ۱. درج عضو
+        # 1. Insert member
         cursor.execute("""
             INSERT INTO public.members (first_name, last_name, national_id, phone_number, club_id)
             VALUES (%s, %s, %s, %s, %s)
@@ -66,7 +66,7 @@ def generate_data(username_or_club):
         member_id = cursor.fetchone()[0]
         total_sessions = random.choice([12, 24])
         
-        # ۲. تنظیم پارامترها متناسب با پروفایل ریسک
+        # 2. Set parameters based on risk profile
         if risk_profile == 'high_risk':
             last_checkin_days_ago = random.randint(9, 20)
             days_active = random.randint(last_checkin_days_ago + 1, 29)
@@ -90,12 +90,11 @@ def generate_data(username_or_club):
                 last_checkin_days_ago = random.randint(0, 2)
             days_active = random.randint(last_checkin_days_ago + 1, 29)
 
-        # محاسبه تاریخ دقیق فقط به صورت date جهت جلوگیری از خطای تایم‌زون در پستگرس
         start_date = (now - timedelta(days=days_active)).date()
         end_date = start_date + timedelta(days=30)
         sub_status = 'ACTIVE'
 
-        # ۳. درج اشتراک
+        # 3. Insert subscription
         cursor.execute("""
             INSERT INTO public.subscriptions (member_id, remaining_sessions, start_date, end_date, status, club_id)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -104,7 +103,7 @@ def generate_data(username_or_club):
 
         sub_id = cursor.fetchone()[0]
 
-        # ۴. درج ترددها
+        # 4. Insert checkins
         used_sessions = total_sessions - remaining
 
         if used_sessions > 0:
@@ -145,12 +144,12 @@ def generate_data(username_or_club):
         added_count += 1
 
     conn.commit()
-    print(f"✅ با موفقیت ۳۰ عضو جدید برای باشگاه '{club_id}' اضافه شد!")
+    print(f"✅ Successfully added 30 dummy members for club '{club_id}'!")
     conn.close()
 
 if __name__ == "__main__":
-    username_input = input("لطفاً نام کاربری یا شناسه باشگاه را وارد کنید: ").strip()
+    username_input = input("Please enter the username or Club ID: ").strip()
     while not username_input:
-        username_input = input("شناسه نمی‌تواند خالی باشد: ").strip()
+        username_input = input("ID cannot be empty: ").strip()
         
     generate_data(username_input)
