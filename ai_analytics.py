@@ -60,7 +60,7 @@ def get_subscription_checkin_counts(club_id):
                 try:
                     result[int(r[0])] = int(r[1])
                 except (ValueError, TypeError):
-                    result[r[0]] = int(r[1])
+                    result[str(r[0])] = int(r[1])
         return result
     except Exception as e:
         print(f"⚠️ خطا در دریافت تعداد ترددهای اشتراک: {e}")
@@ -82,23 +82,23 @@ def predict_churn_risk(club_id):
             df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
             df_att = df_att.dropna(subset=['check_in_time'])
             if not df_att.empty:
-                last_att = df_att.groupby('member_id')['check_in_time'].max().to_dict()
-                last_checkin_map = last_att
+                # یکسان‌سازی کلید شناسه‌ها به صورت str جهت جلوگیری از عدم تطابق int و str
+                for _, att_row in df_att.iterrows():
+                    m_key = str(att_row.get('member_id', att_row.get('id', '')))
+                    c_time = att_row.get('check_in_time')
+                    if m_key and (m_key not in last_checkin_map or c_time > last_checkin_map[m_key]):
+                        last_checkin_map[m_key] = c_time
 
         sub_checkins = get_subscription_checkin_counts(club_id)
         now_tehran = pd.Timestamp.now(tz=TEHRAN_TZ_STR)
         
-        # ۱. محاسبه روزهای غیبت با جابه‌جایی ایمن NaT
+        # ۱. محاسبه روزهای غیبت با پشتیبانی از هر دو کلید member_id و id
         def calc_days_absent(row):
             try:
-                m_id = row['id']
-                try:
-                    m_id_key = int(m_id)
-                except (ValueError, TypeError):
-                    m_id_key = m_id
+                m_id = str(row.get('member_id', row.get('id', '')))
 
-                if m_id_key in last_checkin_map:
-                    last_t = last_checkin_map[m_id_key]
+                if m_id and m_id in last_checkin_map:
+                    last_t = last_checkin_map[m_id]
                     if pd.isna(last_t):
                         return 15
                     diff = (now_tehran - last_t).days
@@ -116,17 +116,20 @@ def predict_churn_risk(club_id):
                 if pd.isna(days):
                     days = 15
 
-                remaining = row.get('subscription_days', 0)
+                # پشتیبانی هم‌زمان از نام ستون‌های remaining_sessions و subscription_days
+                remaining = row.get('remaining_sessions', row.get('subscription_days', 0))
                 if pd.isna(remaining) or remaining is None:
                     remaining = 0
                 else:
                     remaining = float(remaining)
 
                 sub_id = row.get('subscription_id')
-                try:
-                    sub_id_key = int(sub_id) if sub_id is not None and not pd.isna(sub_id) else None
-                except (ValueError, TypeError):
-                    sub_id_key = sub_id
+                sub_id_key = None
+                if sub_id is not None and not pd.isna(sub_id):
+                    try:
+                        sub_id_key = int(sub_id)
+                    except (ValueError, TypeError):
+                        sub_id_key = str(sub_id)
                     
                 used_sessions = sub_checkins.get(sub_id_key, 0) if sub_id_key is not None else 0
                 calculated_total = remaining + used_sessions
@@ -142,7 +145,7 @@ def predict_churn_risk(club_id):
                 
                 total_score = min(100.0, s_absence + s_lifecycle)
                 return round(float(total_score), 1)
-            except Exception as e:
+            except Exception:
                 return 50.0
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
