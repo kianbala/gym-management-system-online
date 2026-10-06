@@ -5,12 +5,11 @@ from db_manager import get_active_members, get_attendance_logs, get_connection
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-# تعریف نام استاندارد تایم‌زون به صورت متنی برای پانداس
 TEHRAN_TZ_STR = 'Asia/Tehran'
 
 def parse_to_tehran(dt_series):
-    """تبدیل دقیق و هوشمند سری زمان‌های Pandas به تایم‌زون تهران"""
-    parsed = pd.to_datetime(dt_series, utc=True)
+    """تبدیل ایمن و دقیق سری زمان‌های Pandas به تایم‌زون تهران"""
+    parsed = pd.to_datetime(dt_series, utc=True, errors='coerce')
     return parsed.dt.tz_convert(TEHRAN_TZ_STR)
 
 def get_hourly_occupancy(club_id):
@@ -22,7 +21,13 @@ def get_hourly_occupancy(club_id):
         
         df = pd.DataFrame(logs)
         df['checkin_datetime'] = parse_to_tehran(df['check_in_time'])
-        df['hour'] = df['checkin_datetime'].dt.hour
+        
+        # حذف رکوردهای زمان نامعتبر
+        df = df.dropna(subset=['checkin_datetime'])
+        if df.empty:
+            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
+
+        df['hour'] = df['checkin_datetime'].dt.hour.astype(int)
         
         hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
         
@@ -37,26 +42,29 @@ def get_hourly_occupancy(club_id):
 
 def get_subscription_checkin_counts(club_id):
     """استخراج تعداد ترددهای انجام‌شده برای اشتراک‌های فعال"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT subscription_id, COUNT(*) 
-        FROM public.checkins 
-        WHERE club_id = %s AND subscription_id IS NOT NULL 
-        GROUP BY subscription_id
-    """, (club_id,))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    # تبدیل صریح کلیدها به int جهت اطمینان از همخوانی تایپ‌ها
-    result = {}
-    for r in rows:
-        if r[0] is not None:
-            try:
-                result[int(r[0])] = int(r[1])
-            except (ValueError, TypeError):
-                result[r[0]] = int(r[1])
-    return result
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT subscription_id, COUNT(*) 
+            FROM public.checkins 
+            WHERE club_id = %s AND subscription_id IS NOT NULL 
+            GROUP BY subscription_id
+        """, (club_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        result = {}
+        for r in rows:
+            if r[0] is not None:
+                try:
+                    result[int(r[0])] = int(r[1])
+                except (ValueError, TypeError):
+                    result[r[0]] = int(r[1])
+        return result
+    except Exception as e:
+        print(f"⚠️ خطا در دریافت تعداد ترددهای اشتراک: {e}")
+        return {}
 
 def predict_churn_risk(club_id):
     """تحلیل ریسک ریزش اعضا بر اساس مدل دقیق شدت غیبت و وزن پایان بسته"""
@@ -72,58 +80,74 @@ def predict_churn_risk(club_id):
         if attendance_logs:
             df_att = pd.DataFrame(attendance_logs)
             df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
-            last_att = df_att.groupby('member_id')['check_in_time'].max().to_dict()
-            last_checkin_map = last_att
+            df_att = df_att.dropna(subset=['check_in_time'])
+            if not df_att.empty:
+                last_att = df_att.groupby('member_id')['check_in_time'].max().to_dict()
+                last_checkin_map = last_att
 
         sub_checkins = get_subscription_checkin_counts(club_id)
-        
-        # استفاده از Timestamp همگام با پانداس برای جلوگیری از خطای تفریق
         now_tehran = pd.Timestamp.now(tz=TEHRAN_TZ_STR)
         
-        # ۱. محاسبه روزهای غیبت با تایم‌زون دقیق
+        # ۱. محاسبه روزهای غیبت با جابه‌جایی ایمن NaT
         def calc_days_absent(row):
-            m_id = row['id']
-            if m_id in last_checkin_map:
-                last_t = last_checkin_map[m_id]
-                diff = (now_tehran - last_t).days
-                return max(0, diff)
-            return 15  # پیش‌فرض برای افرادی که هنوز هیچ ترودی ثبت نکرده‌اند
+            try:
+                m_id = row['id']
+                try:
+                    m_id_key = int(m_id)
+                except (ValueError, TypeError):
+                    m_id_key = m_id
+
+                if m_id_key in last_checkin_map:
+                    last_t = last_checkin_map[m_id_key]
+                    if pd.isna(last_t):
+                        return 15
+                    diff = (now_tehran - last_t).days
+                    return max(0, int(diff))
+                return 15
+            except Exception:
+                return 15
 
         df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
         
         # ۲. محاسبه نمره ریسک
         def calculate_risk_score(row):
-            days = row['days_since_last_checkin']
-            remaining = row.get('subscription_days', 0) or 0
-            sub_id = row.get('subscription_id')
-            
             try:
-                sub_id_key = int(sub_id) if sub_id is not None else None
-            except (ValueError, TypeError):
-                sub_id_key = sub_id
+                days = row.get('days_since_last_checkin', 15)
+                if pd.isna(days):
+                    days = 15
+
+                remaining = row.get('subscription_days', 0)
+                if pd.isna(remaining) or remaining is None:
+                    remaining = 0
+                else:
+                    remaining = float(remaining)
+
+                sub_id = row.get('subscription_id')
+                try:
+                    sub_id_key = int(sub_id) if sub_id is not None and not pd.isna(sub_id) else None
+                except (ValueError, TypeError):
+                    sub_id_key = sub_id
+                    
+                used_sessions = sub_checkins.get(sub_id_key, 0) if sub_id_key is not None else 0
+                calculated_total = remaining + used_sessions
                 
-            used_sessions = sub_checkins.get(sub_id_key, 0)
-            calculated_total = remaining + used_sessions
-            
-            # تشخیص قطعی نوع بسته (۱۲ یا ۲۴)
-            total_sessions = 24 if calculated_total > 12 else 12
-            
-            # الف) محاسبه شدت غیبت
-            expected_rate = total_sessions / 30.0
-            s_absence = days * expected_rate * 15.0
-            
-            # ب) محاسبه وزن پایان بسته (تابع درجه دو)
-            progress = 1.0 - (float(remaining) / float(total_sessions))
-            progress = max(0.0, min(1.0, progress))
-            s_lifecycle = 30.0 * (progress ** 2)
-            
-            # مجموع امتیاز (محدود به سقف ۱۰۰)
-            total_score = min(100.0, s_absence + s_lifecycle)
-            return round(float(total_score), 1)
+                total_sessions = 24.0 if calculated_total > 12 else 12.0
+                
+                expected_rate = total_sessions / 30.0
+                s_absence = days * expected_rate * 15.0
+                
+                progress = 1.0 - (remaining / total_sessions)
+                progress = max(0.0, min(1.0, progress))
+                s_lifecycle = 30.0 * (progress ** 2)
+                
+                total_score = min(100.0, s_absence + s_lifecycle)
+                return round(float(total_score), 1)
+            except Exception as e:
+                return 50.0
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
         
-        # ۳. نگاشت بازه‌های ریسک به برچسب‌ها
+        # ۳. نگاشت برچسب‌ها
         def map_to_label(score):
             if score >= 70:
                 return '🔴 بالا (High)'
