@@ -1,168 +1,183 @@
-import pandas as pd
-import numpy as np
-import warnings
-from db_manager import get_active_members, get_attendance_logs, get_connection
+import random
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from db_manager import get_connection
 
-warnings.filterwarnings('ignore', category=UserWarning)
+TEHRAN_TZ = ZoneInfo("Asia/Tehran")
 
-TEHRAN_TZ_STR = 'Asia/Tehran'
+FIRST_NAMES = [
+    'علی', 'محمد', 'امیر', 'حسین', 'مهدی', 'رضا', 'سروش', 'آرش', 'کامران', 'نوید',
+    'سارا', 'نیلوفر', 'مریم', 'زهرا', 'پریسا', 'فاطمه', 'مهرنوش', 'کیانا', 'مینا', 'نرگس'
+]
 
-def parse_to_tehran(dt_series):
-    """تبدیل ایمن و دقیق سری زمان‌های Pandas به تایم‌زون تهران"""
-    parsed = pd.to_datetime(dt_series, utc=True, errors='coerce')
-    return parsed.dt.tz_convert(TEHRAN_TZ_STR)
+LAST_NAMES = [
+    'رضایی', 'محمدی', 'احمدی', 'کریمی', 'حسینی', 'کاظمی', 'قاسمی', 'نوری', 'مرادی', 'ابراهیمی',
+    'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
+]
 
-def get_hourly_occupancy(club_id):
-    """تحلیل و استخراج میزان شلوغی باشگاه بر اساس ساعات شبانه‌روز"""
+def get_valid_club_id(cursor, username_or_club):
+    """فرآیند هوشمند پیدا کردن شناسه واقعی باشگاه"""
     try:
-        logs = get_attendance_logs(club_id)
-        if not logs:
-            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
+        # ۱. جستجو بر اساس نام کاربری
+        cursor.execute(
+            "SELECT club_id, id FROM public.users WHERE LOWER(TRIM(username)) = LOWER(TRIM(%s));", 
+            (username_or_club,)
+        )
+        res = cursor.fetchone()
+        if res:
+            return res[0] if res[0] is not None else res[1]
         
-        df = pd.DataFrame(logs)
-        df['checkin_datetime'] = parse_to_tehran(df['check_in_time'])
-        
-        # حذف رکوردهای زمان نامعتبر
-        df = df.dropna(subset=['checkin_datetime'])
-        if df.empty:
-            return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
-
-        df['hour'] = df['checkin_datetime'].dt.hour.astype(int)
-        
-        hourly_counts = df.groupby('hour').size().reset_index(name='checkin_count')
-        
-        all_hours = pd.DataFrame({'hour': list(range(0, 24))})
-        result = pd.merge(all_hours, hourly_counts, on='hour', how='left').fillna(0)
-        result['checkin_count'] = result['checkin_count'].astype(int)
-        
-        return result
+        # ۲. جستجو مستقیماً بر اساس club_id یا id
+        cursor.execute(
+            "SELECT club_id, id FROM public.users WHERE TRIM(CAST(club_id AS TEXT)) = TRIM(%s) OR TRIM(CAST(id AS TEXT)) = TRIM(%s);", 
+            (username_or_club, username_or_club)
+        )
+        res = cursor.fetchone()
+        if res:
+            return res[0] if res[0] is not None else res[1]
     except Exception as e:
-        print(f"⚠️ خطا در محاسبه ساعات شلوغی: {e}")
-        return pd.DataFrame({'hour': list(range(0, 24)), 'checkin_count': [0]*24})
+        print(f"⚠️ Warning during club ID resolution: {e}")
+    
+    return username_or_club
 
-def get_subscription_checkin_counts(club_id):
-    """استخراج تعداد ترددهای انجام‌شده برای اشتراک‌های فعال"""
+def generate_data(username_or_club):
+    conn = get_connection()
+    cursor = conn.cursor()
+
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT subscription_id, COUNT(*) 
-            FROM public.checkins 
-            WHERE club_id = %s AND subscription_id IS NOT NULL 
-            GROUP BY subscription_id
-        """, (club_id,))
-        rows = cursor.fetchall()
-        conn.close()
+        club_id = get_valid_club_id(cursor, username_or_club)
+
+        print(f"\n✅ Target Club ID resolved: '{club_id}'")
+        print(f"⏳ Generating 30 dummy members & check-in logs for club '{club_id}'...")
+
+        now = datetime.now(TEHRAN_TZ)
         
-        result = {}
-        for r in rows:
-            if r[0] is not None:
-                try:
-                    result[int(r[0])] = int(r[1])
-                except (ValueError, TypeError):
-                    result[str(r[0])] = int(r[1])
-        return result
-    except Exception as e:
-        print(f"⚠️ خطا در دریافت تعداد ترددهای اشتراک: {e}")
-        return {}
+        peak_hours = [17, 18, 18, 19, 19, 19, 20, 20, 21]
+        regular_hours = [8, 9, 10, 11, 14, 15, 16, 22]
+        all_hours = peak_hours + regular_hours
 
-def predict_churn_risk(club_id):
-    """تحلیل ریسک ریزش اعضا بر اساس مدل دقیق شدت غیبت و وزن پایان بسته"""
-    try:
-        raw_members = get_active_members(club_id)
-        if not raw_members:
-            return pd.DataFrame()
+        risk_profiles = ['high_risk'] * 6 + ['medium_risk'] * 6 + ['low_risk'] * 18
+        random.shuffle(risk_profiles)
+
+        added_count = 0
+        total_checkins_added = 0
+
+        while added_count < 30:
+            risk_profile = risk_profiles[added_count]
+            f_name = random.choice(FIRST_NAMES)
+            l_name = random.choice(LAST_NAMES)
             
-        df_members = pd.DataFrame(raw_members)
-        
-        attendance_logs = get_attendance_logs(club_id)
-        last_checkin_map = {}
-        if attendance_logs:
-            df_att = pd.DataFrame(attendance_logs)
-            df_att['check_in_time'] = parse_to_tehran(df_att['check_in_time'])
-            df_att = df_att.dropna(subset=['check_in_time'])
-            if not df_att.empty:
-                # یکسان‌سازی کلید شناسه‌ها به صورت str جهت جلوگیری از عدم تطابق int و str
-                for _, att_row in df_att.iterrows():
-                    m_key = str(att_row.get('member_id', att_row.get('id', '')))
-                    c_time = att_row.get('check_in_time')
-                    if m_key and (m_key not in last_checkin_map or c_time > last_checkin_map[m_key]):
-                        last_checkin_map[m_key] = c_time
+            national_id = f"{random.randint(1000000000, 9999999999)}"
+            phone_number = f"0912{random.randint(1000000, 9999999)}"
 
-        sub_checkins = get_subscription_checkin_counts(club_id)
-        now_tehran = pd.Timestamp.now(tz=TEHRAN_TZ_STR)
-        
-        # ۱. محاسبه روزهای غیبت با پشتیبانی از هر دو کلید member_id و id
-        def calc_days_absent(row):
-            try:
-                m_id = str(row.get('member_id', row.get('id', '')))
+            cursor.execute(
+                "SELECT 1 FROM public.members WHERE (national_id = %s OR phone_number = %s) AND club_id = %s", 
+                (national_id, phone_number, club_id)
+            )
+            if cursor.fetchone():
+                continue
 
-                if m_id and m_id in last_checkin_map:
-                    last_t = last_checkin_map[m_id]
-                    if pd.isna(last_t):
-                        return 15
-                    diff = (now_tehran - last_t).days
-                    return max(0, int(diff))
-                return 15
-            except Exception:
-                return 15
+            # ۱. درج عضو
+            cursor.execute("""
+                INSERT INTO public.members (first_name, last_name, national_id, phone_number, club_id)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING member_id;
+            """, (f_name, l_name, national_id, phone_number, club_id))
+            
+            member_id = cursor.fetchone()[0]
+            total_sessions = random.choice([12, 24])
+            
+            # ۲. تنظیم پارامترهای ریسک
+            if risk_profile == 'high_risk':
+                last_checkin_days_ago = random.randint(9, 20)
+                days_active = random.randint(last_checkin_days_ago + 1, 29)
+                remaining = random.randint(0, 3)
 
-        df_members['days_since_last_checkin'] = df_members.apply(calc_days_absent, axis=1)
-        
-        # ۲. محاسبه نمره ریسک
-        def calculate_risk_score(row):
-            try:
-                days = row.get('days_since_last_checkin', 15)
-                if pd.isna(days):
-                    days = 15
-
-                # پشتیبانی هم‌زمان از نام ستون‌های remaining_sessions و subscription_days
-                remaining = row.get('remaining_sessions', row.get('subscription_days', 0))
-                if pd.isna(remaining) or remaining is None:
-                    remaining = 0
+            elif risk_profile == 'medium_risk':
+                if total_sessions == 12:
+                    remaining = random.randint(2, 5)
+                    last_checkin_days_ago = random.randint(5, 7)
                 else:
-                    remaining = float(remaining)
+                    remaining = random.randint(13, 15)
+                    last_checkin_days_ago = random.randint(3, 4)
+                days_active = random.randint(last_checkin_days_ago + 1, 29)
 
-                sub_id = row.get('subscription_id')
-                sub_id_key = None
-                if sub_id is not None and not pd.isna(sub_id):
-                    try:
-                        sub_id_key = int(sub_id)
-                    except (ValueError, TypeError):
-                        sub_id_key = str(sub_id)
-                    
-                used_sessions = sub_checkins.get(sub_id_key, 0) if sub_id_key is not None else 0
-                calculated_total = remaining + used_sessions
-                
-                total_sessions = 24.0 if calculated_total > 12 else 12.0
-                
-                expected_rate = total_sessions / 30.0
-                s_absence = days * expected_rate * 15.0
-                
-                progress = 1.0 - (remaining / total_sessions)
-                progress = max(0.0, min(1.0, progress))
-                s_lifecycle = 30.0 * (progress ** 2)
-                
-                total_score = min(100.0, s_absence + s_lifecycle)
-                return round(float(total_score), 1)
-            except Exception:
-                return 50.0
-
-        df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
-        
-        # ۳. نگاشت برچسب‌ها
-        def map_to_label(score):
-            if score >= 70:
-                return '🔴 بالا (High)'
-            elif score >= 40:
-                return '🟡 متوسط (Medium)'
             else:
-                return '🟢 پایین (Low)'
+                if total_sessions == 12:
+                    remaining = random.randint(6, 11)
+                    last_checkin_days_ago = random.randint(0, 3)
+                else:
+                    remaining = random.randint(16, 23)
+                    last_checkin_days_ago = random.randint(0, 2)
+                days_active = random.randint(last_checkin_days_ago + 1, 29)
+
+            start_date = (now - timedelta(days=days_active)).date()
+            end_date = start_date + timedelta(days=30)
+            sub_status = 'ACTIVE'
+
+            # ۳. درج اشتراک
+            cursor.execute("""
+                INSERT INTO public.subscriptions (member_id, remaining_sessions, start_date, end_date, status, club_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING subscription_id;
+            """, (member_id, remaining, start_date, end_date, sub_status, club_id))
+
+            sub_id = cursor.fetchone()[0]
+
+            # ۴. درج ترددها
+            used_sessions = total_sessions - remaining
+
+            if used_sessions > 0:
+                hour = random.choice(all_hours)
+                minute = random.randint(0, 59)
                 
-        df_members['risk_level'] = df_members['churn_risk_score'].apply(map_to_label)
-        
-        return df_members
+                last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(
+                    hour=hour, minute=minute, second=0, microsecond=0
+                )
+
+                cursor.execute("""
+                    INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+                    VALUES (%s, %s, %s, %s);
+                """, (member_id, sub_id, last_checkin_time, club_id))
+                total_checkins_added += 1
+
+                past_sessions_count = used_sessions - 1
+                start_past_days = min(last_checkin_days_ago + 1, days_active)
+                end_past_days = days_active
+
+                for _ in range(past_sessions_count):
+                    if start_past_days <= end_past_days:
+                        past_days_ago = random.randint(start_past_days, end_past_days)
+                    else:
+                        past_days_ago = days_active
+                        
+                    past_hour = random.choice(all_hours)
+                    past_minute = random.randint(0, 59)
+                    
+                    past_checkin_time = (now - timedelta(days=past_days_ago)).replace(
+                        hour=past_hour, minute=past_minute, second=0, microsecond=0
+                    )
+                    
+                    cursor.execute("""
+                        INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+                        VALUES (%s, %s, %s, %s);
+                    """, (member_id, sub_id, past_checkin_time, club_id))
+                    total_checkins_added += 1
+
+            added_count += 1
+
+        conn.commit()
+        print(f"✅ Successfully added 30 members and {total_checkins_added} check-in logs for club '{club_id}'!")
 
     except Exception as e:
-        print(f"⚠️ خطا در محاسبه پیش‌بینی ریزش: {e}")
-        return pd.DataFrame()
+        conn.rollback()
+        print(f"❌ Error during data generation: {e}")
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    username_input = input("Please enter the username or Club ID: ").strip()
+    while not username_input:
+        username_input = input("ID cannot be empty: ").strip()
+        
+    generate_data(username_input)
