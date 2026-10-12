@@ -22,6 +22,7 @@ TEHRAN = ZoneInfo("Asia/Tehran")
 ENDING_MAX_SESSIONS = 2   # حداکثر جلسه باقی‌مانده برای «رو به اتمام»
 ENDING_MAX_DAYS = 3       # حداکثر روز باقی‌مانده تا انقضا برای «رو به اتمام»
 ABSENT_MIN_DAYS = 7       # بیش از این تعداد روز غیبت = «غایب»
+ABSENT_WARN_DAYS = 3      # بیش از این تعداد روز غیبت = هشدار زرد در جدول
 
 # کلید داخلی صفحه (همان رشته‌هایی که app.py با آن مسیریابی می‌کند) ← (آیکون، عنوان نمایشی)
 MENU = [
@@ -200,18 +201,25 @@ def filter_rows(rows, flt, query):
 
 
 def rows_to_dataframe(rows):
-    """ردیف‌ها را به جدول نمایشی تبدیل می‌کند (ارقام جدول لاتین است تا کپی و جستجو راحت باشد)"""
+    """
+    ردیف‌ها را به جدول نمایشی تبدیل می‌کند.
+
+    نکته مهم (جهت متن): موتور جدول Streamlit جهت هر سلول را از روی «اولین کاراکتر قوی» تعیین می‌کند
+    و ایموجی را چپ‌به‌راست حساب می‌کند. اگر ایموجی اول متن باشد، کل سلول چپ‌چین می‌شود.
+    پس ایموجی همیشه «آخر» متن می‌آید و متن/تاریخ/اعداد با ارقام فارسی شروع می‌شوند
+    (ارقام فارسی راست‌به‌چپ حساب می‌شوند). کدها (کد عضویت، کد ملی، تلفن) لاتین می‌مانند تا کپی راحت باشد.
+    """
     def status_text(r):
         if r["status_key"] == "active":
-            return "🟡 رو به اتمام" if r["ending"] else "🟢 فعال"
-        return "🔴 منقضی" if r["status_key"] == "expired" else "⚪ فاقد اشتراک"
+            return "رو به اتمام 🟡" if r["ending"] else "فعال 🟢"
+        return "منقضی 🔴" if r["status_key"] == "expired" else "فاقد اشتراک ⚪"
 
     def absent_text(r):
         d = r["days_absent"]
         if d is None:
             return "بدون تردد"
-        mark = "🔴 " if d > ABSENT_MIN_DAYS else ("🟡 " if d > 3 else "")
-        return f"{mark}{d} روز"
+        mark = " 🔴" if d > ABSENT_MIN_DAYS else (" 🟡" if d > ABSENT_WARN_DAYS else "")
+        return f"{fa(d)} روز{mark}"
 
     return pd.DataFrame([{
         "کد عضویت": r["id"],
@@ -219,8 +227,8 @@ def rows_to_dataframe(rows):
         "کد ملی": r["national_id"],
         "شماره تماس": r["phone"],
         "وضعیت": status_text(r),
-        "جلسات باقی‌مانده": f'{r["sessions_left"]} از {r["total"]}' if r["total"] else "-",
-        "تاریخ انقضا": jalali_numeric(r["end_date"]),
+        "جلسات باقی‌مانده": fa(f'{r["sessions_left"]} از {r["total"]}') if r["total"] else "ندارد",
+        "تاریخ انقضا": fa(jalali_numeric(r["end_date"])) if r["end_date"] else "ندارد",
         "روزهای غیبت": absent_text(r),
     } for r in rows])
 
@@ -353,7 +361,10 @@ def render_dashboard(club_id):
     )
 
     shown = filter_rows(rows, selected, query)
-    st.caption(f"{fa(len(shown))} عضو نمایش داده می‌شود")
+    st.markdown(
+        _html(f'<div class="result-count">{fa(len(shown))} عضو نمایش داده می‌شود</div>'),
+        unsafe_allow_html=True,
+    )
 
     if not shown:
         st.info("هیچ عضوی با این مشخصات یافت نشد.")

@@ -198,6 +198,9 @@ PANEL_STYLE = """
 .page-title { font-size: 26px; font-weight: 800; color: #F1F5F9; line-height: 1.6; }
 .page-sub { font-size: 14px; color: #94A3B8; margin-top: 2px; }
 
+/* --- شمارنده نتایج؛ فاصله پایین عمدی است (نوار ابزار جدول روی لبه بالای آن می‌نشیند) --- */
+.result-count { font-size: 13px; color: #94A3B8; margin: 2px 0 28px; text-align: right; direction: rtl; }
+
 /* --- کارت‌های خلاصه --- */
 .kpi-grid {
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
