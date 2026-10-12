@@ -19,14 +19,15 @@ from ai_analytics import (
     predict_churn_risk, 
     get_subscription_checkin_counts
 )
-from auth import authenticate_user, add_user
+from auth_ui import render_auth_page
+from ui_styles import FONT_STYLE
 
-st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", layout="wide")
+st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
 
 # -------------------------------------------------------------
 # استایل RTL استاندارد + تنظیم عرض سایبار
 # -------------------------------------------------------------
-st.markdown("""
+st.markdown(FONT_STYLE + """
     <style>
     /* ۱. جهت‌‌دهی راست‌چین سراسری برای کل اپلیکیشن */
     html, body, .stApp {
@@ -142,56 +143,16 @@ if not st.session_state.logged_in and "session_club" in query_params:
 # ۱. صفحه ورود و ثبت نام باشگاه
 # -------------------------------------------------------------
 if not st.session_state.logged_in:
-    st.subheader("🔑 ورود یا ثبت‌نام باشگاه")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        tab_login, tab_register = st.tabs(["🔐 ورود به سیستم", "👤 ثبت‌نام باشگاه جدید"])
-        
-        with tab_login:
-            with st.form("login_form"):
-                username_input = st.text_input("نام کاربری")
-                password_input = st.text_input("رمز عبور", type="password")
-                submit_login = st.form_submit_button("ورود به سیستم", type="primary")
-                
-                if submit_login:
-                    if username_input and password_input:
-                        success, club_id = authenticate_user(username_input, password_input)
-                        if success:
-                            st.session_state.logged_in = True
-                            st.session_state.username = username_input
-                            st.session_state.club_id = club_id
-                            
-                            st.query_params["session_club"] = club_id
-                            st.query_params["session_user"] = username_input
-                            
-                            st.success(f"خوش آمدید {username_input}!")
-                            time.sleep(0.5)
-                            st.rerun()
-                        else:
-                            st.error("نام کاربری یا رمز عبور اشتباه است.")
-                    else:
-                        st.warning("لطفاً اطلاعات را کامل وارد کنید.")
-                        
-        with tab_register:
-            with st.form("register_form"):
-                reg_username = st.text_input("نام کاربری مدیر")
-                reg_club_name = st.text_input("نام باشگاه / شرکت")
-                reg_password = st.text_input("رمز عبور", type="password")
-                submit_reg = st.form_submit_button("ساخت حساب باشگاه جدید", type="primary")
-                
-                if submit_reg:
-                    if reg_username.strip() and reg_password.strip() and reg_club_name.strip():
-                        if add_user(reg_username, reg_password, club_name=reg_club_name):
-                            st.success(f"باشگاه '{reg_club_name}' ایجاد شد! اکنون می‌توانید وارد شوید.")
-                        else:
-                            st.error("نام کاربری تکراری است.")
-                    else:
-                        st.warning("لطفاً تمامی فیلدها را پر کنید.")
+    render_auth_page()
 
 # -------------------------------------------------------------
 # ۲. پنل اصلی سیستم (پس از ورود)
 # -------------------------------------------------------------
 else:
+    welcome_msg = st.session_state.pop("welcome_toast", None)
+    if welcome_msg:
+        st.toast(welcome_msg, icon="👋")
+
     role_color = "#10B981"
     
     card_html = f"""
