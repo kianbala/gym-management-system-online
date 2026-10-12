@@ -92,10 +92,10 @@ def generate_data(username):
             elif risk_profile == 'medium_risk':
                 if total_sessions == 12:
                     remaining = random.randint(2, 5)
-                    last_checkin_days_ago = random.randint(5, 7)
+                    last_checkin_days_ago = random.randint(6, 8)
                 else:
                     remaining = random.randint(13, 15)
-                    last_checkin_days_ago = random.randint(3, 4)
+                    last_checkin_days_ago = random.randint(4, 5)
                 days_active = random.randint(last_checkin_days_ago + 1, 29)
 
             else:
@@ -130,6 +130,8 @@ def generate_data(username):
                 last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(
                     hour=hour, minute=minute, second=0, microsecond=0
                 )
+                if last_checkin_time > now:
+                    last_checkin_time -= timedelta(days=1)
 
                 cursor.execute("""
                     INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
