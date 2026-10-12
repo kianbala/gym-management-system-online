@@ -21,6 +21,7 @@ from ai_analytics import (
 )
 from auth_ui import render_auth_page
 from ui_styles import FONT_STYLE
+from panel_ui import render_sidebar, render_dashboard
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
 
@@ -154,150 +155,12 @@ else:
     if welcome_msg:
         st.toast(welcome_msg, icon="👋")
 
-    role_color = "#10B981"
-    
-    card_html = f"""
-<div style="background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%); border: 1px solid #334155; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); direction: rtl; text-align: right;">
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px dashed #334155; padding-bottom: 8px;">
-<span style="font-size: 13px; color: #94A3B8; font-weight: 500;">👤 مدیر سیستم:</span>
-<span style="background-color: {role_color}22; color: {role_color}; border: 1px solid {role_color}; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;">{st.session_state.username}</span>
-</div>
-<div style="display: flex; flex-direction: column; gap: 4px;">
-<span style="font-size: 12px; color: #64748B; font-weight: 500;">🏢 نام / شناسه باشگاه:</span>
-<span style="font-size: 19px; color: #38BDF8; font-weight: 800; letter-spacing: 0.5px;">{st.session_state.club_id}</span>
-</div>
-</div>
-"""
-    st.sidebar.markdown(card_html, unsafe_allow_html=True)
-    
-    if st.sidebar.button("🚪 خروج"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.session_state.club_id = ""
-        st.query_params.clear()
-        st.rerun()
-
-    st.sidebar.markdown("---")
-    
-    menu = [
-        "داشبورد و اعضا", 
-        "ثبت عضو جدید", 
-        "ثبت ورود (تردد)", 
-        "تخصیص بسته", 
-        "📊 آمار و گزارشات", 
-        "مدیریت و حذف"
-    ]
-    choice = st.sidebar.selectbox("منوی اصلی", menu)
+    choice = render_sidebar()
     club_id = st.session_state.club_id
 
     # --- بخش ۱: مشاهده و جستجوی اعضا ---
     if choice == "داشبورد و اعضا":
-        st.subheader("📋 لیست اعضا و وضعیت اشتراک‌ها")
-        
-        raw_members = get_all_members(club_id)
-        attendance_logs = get_attendance_logs(club_id)
-        sub_checkins = get_subscription_checkin_counts(club_id)
-        
-        last_checkin_map = {}
-        for log in attendance_logs:
-            m_id = log.get('member_id')
-            check_time_str = log.get('check_in_time')
-            if m_id and check_time_str and m_id not in last_checkin_map:
-                try:
-                    dt = datetime.fromisoformat(check_time_str.replace('Z', '+00:00'))
-                    last_checkin_map[m_id] = dt.date()
-                except Exception:
-                    pass
-
-        now_date = datetime.now().date()
-        processed_data = []
-
-        for m in raw_members:
-            m_id = m.get("id")
-            name = m.get("name", "")
-            national_id = m.get("national_id", "")
-            phone = m.get("phone", "")
-            sub_days = m.get("subscription_days", 0) or 0
-            sub_id = m.get("subscription_id", "-")
-            end_date_str = m.get("end_date", "-")
-            db_status = m.get("status", "EXPIRED")
-
-            if sub_id != "-":
-                # محاسبه نوع واقعی بسته بر اساس مجموع باقی‌مانده و ترددهای انجام‌شده
-                try:
-                    s_id_key = int(sub_id)
-                except ValueError:
-                    s_id_key = sub_id
-                    
-                used_sessions = sub_checkins.get(s_id_key, 0)
-                total_capacity = sub_days + used_sessions
-                
-                package_type = "بسته ۲ | ۲۴ جلسه" if total_capacity > 12 else "بسته ۱ | ۱۲ جلسه"
-                sub_code = str(sub_id)
-                sessions_left = str(sub_days)
-                expire_str = str(end_date_str)
-                status_str = db_status
-            else:
-                package_type = "-"
-                sub_code = "-"
-                sessions_left = "-"
-                expire_str = "-"
-                status_str = "فاقد اشتراک"
-
-            if m_id in last_checkin_map:
-                days_absent_val = (now_date - last_checkin_map[m_id]).days
-                days_absent_str = f"{max(0, days_absent_val)} روز"
-            else:
-                days_absent_str = "بدون تردد"
-
-            processed_data.append({
-                "کد عضویت": m_id,
-                "نام و نام خانوادگی": name,
-                "کد ملی": national_id,
-                "شماره تماس": phone,
-                "نوع بسته": package_type,
-                "کد اشتراک": sub_code,
-                "جلسات باقی‌مانده": sessions_left,
-                "تاریخ انقضا": expire_str,
-                "وضعیت": status_str,
-                "روزهای غیبت": days_absent_str
-            })
-
-        col_search, col_filter = st.columns([2, 1])
-        
-        with col_search:
-            search_dash = st.text_input("🔍 جستجوی عضو (نام، شماره، کد ملی یا کد عضویت):", placeholder="مثلاً: علی، 0912 یا کد عضویت...")
-            
-        with col_filter:
-            selected_status = st.selectbox("فیلتر وضعیت اشتراک:", ["همه", "ACTIVE", "EXPIRED", "فاقد اشتراک"])
-
-        filtered_list = processed_data
-        if selected_status != "همه":
-            filtered_list = [item for item in filtered_list if item["وضعیت"] == selected_status]
-
-        if search_dash.strip():
-            q = search_dash.strip().lower()
-            filtered_list = [
-                item for item in filtered_list
-                if q in str(item["نام و نام خانوادگی"]).lower()
-                or q in str(item["کد ملی"])
-                or q in str(item["شماره تماس"])
-                or q in str(item["کد عضویت"])
-            ]
-
-        st.caption(f"📊 تعداد اعضای یافت شده: **{len(filtered_list)} نفر**")
-
-        if filtered_list:
-            df_display = pd.DataFrame(filtered_list)
-            cols_order = [
-                "کد عضویت", "نام و نام خانوادگی", "کد ملی", "شماره تماس",
-                "نوع بسته", "کد اشتراک", "جلسات باقی‌مانده", "تاریخ انقضا",
-                "وضعیت", "روزهای غیبت"
-            ]
-            df_display = df_display[cols_order]
-            st.dataframe(df_display, use_container_width=True, hide_index=True)
-        else:
-            st.info("هیچ عضوی با این مشخصات یافت نشد.")
+        render_dashboard(club_id)
 
     # --- بخش ۲: ثبت عضو جدید ---
     elif choice == "ثبت عضو جدید":

@@ -144,3 +144,72 @@ AUTH_POINTS_HTML = """
 <div class="auth-point"><span class="auth-dot" style="background:#10B981"></span><span><b>ساعات شلوغی:</b> بدانید باشگاه چه ساعتی بیشترین تردد را دارد.</span></div>
 </div>
 """
+
+# -------------------------------------------------------------
+# پنل اصلی: سایدبار + هدر صفحه + کارت‌های خلاصه
+# عمداً به المان‌های داخلی Streamlit کم‌تر وابسته است:
+#  - سایدبار با کلاس‌های st-key-* (از روی key دکمه‌ها) استایل می‌شود
+#  - اگر انتخابگری در نسخه‌ای کار نکند، دکمه‌ها همچنان با ظاهر پیش‌فرض قابل استفاده‌اند
+# -------------------------------------------------------------
+PANEL_STYLE = """
+<style>
+/* --- کارت باشگاه در سایدبار --- */
+.side-card {
+    background: #111A2E; border: 1px solid #1E293B; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 14px;
+}
+.side-label { font-size: 12px; color: #64748B; font-weight: 600; }
+.side-club { font-size: 20px; font-weight: 800; color: #38BDF8; line-height: 1.6; word-break: break-word; }
+.side-user { font-size: 12px; color: #94A3B8; margin-top: 2px; }
+
+/* --- منوی ناوبری (هر آیتم یک دکمه با key=nav_*) --- */
+[class*="st-key-nav_"], [class*="st-key-nav_"] > div, [class*="st-key-nav_"] button {
+    width: 100% !important;
+}
+[class*="st-key-nav_"] button {
+    justify-content: flex-start; height: 44px; border-radius: 10px;
+    font-weight: 600; text-align: right !important;
+}
+[class*="st-key-nav_"] button * { text-align: right !important; color: inherit !important; }
+[class*="st-key-nav_"] button[kind="secondary"],
+[class*="st-key-nav_"] button[data-testid="stBaseButton-secondary"] {
+    background: transparent !important; border: 1px solid transparent !important; color: #94A3B8 !important;
+}
+[class*="st-key-nav_"] button[kind="secondary"]:hover,
+[class*="st-key-nav_"] button[data-testid="stBaseButton-secondary"]:hover {
+    background: #111A2E !important; color: #E2E8F0 !important;
+}
+[class*="st-key-nav_"] button[kind="primary"],
+[class*="st-key-nav_"] button[data-testid="stBaseButton-primary"] {
+    background: rgba(56, 189, 248, 0.14) !important;
+    border: 1px solid rgba(56, 189, 248, 0.35) !important; color: #38BDF8 !important;
+}
+
+/* --- دکمه خروج --- */
+.st-key-logout, .st-key-logout > div, .st-key-logout button { width: 100% !important; }
+.st-key-logout button {
+    height: 42px; border-radius: 10px; background: transparent !important;
+    border: 1px solid #3F1D2B !important; color: #FCA5A5 !important;
+}
+.st-key-logout button:hover { background: rgba(239, 68, 68, 0.10) !important; }
+
+/* --- هدر صفحه --- */
+.page-head { margin: 2px 0 18px; text-align: right; direction: rtl; }
+.page-title { font-size: 26px; font-weight: 800; color: #F1F5F9; line-height: 1.6; }
+.page-sub { font-size: 14px; color: #94A3B8; margin-top: 2px; }
+
+/* --- کارت‌های خلاصه --- */
+.kpi-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px; margin: 0 0 18px; direction: rtl;
+}
+.kpi { background: #111A2E; border: 1px solid #1E293B; border-radius: 14px; padding: 14px 16px; }
+.kpi-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #94A3B8; }
+.kpi-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.kpi-value { font-size: 30px; font-weight: 800; line-height: 1.5; color: #F1F5F9; margin-top: 4px; }
+.kpi-note { font-size: 12px; color: #64748B; }
+@media (max-width: 760px) {
+    .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+"""
