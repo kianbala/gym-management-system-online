@@ -307,6 +307,8 @@ def render_sidebar():
         active = st.session_state.nav_choice == key
         if _stretch_button(f"{icon}  {text}", key=f"nav_{i}", type_="primary" if active else "secondary") and not active:
             st.session_state.nav_choice = key
+            st.session_state.pop("last_added", None)   # کارت تأیید ثبت عضو فقط تا ترک صفحه می‌ماند
+            st.session_state.pop("am_pending", None)
             st.rerun()
 
     st.sidebar.divider()

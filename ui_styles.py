@@ -198,6 +198,61 @@ PANEL_STYLE = """
 .page-title { font-size: 26px; font-weight: 800; color: #F1F5F9; line-height: 1.6; }
 .page-sub { font-size: 14px; color: #94A3B8; margin-top: 2px; }
 
+/* --- فرم‌های پنل (کارت + دکمه اصلی تمام‌عرض) --- */
+html body .stApp [data-testid="stForm"] {
+    border: 1px solid #1E293B; border-radius: 16px; padding: 22px 20px 20px;
+}
+html body .stApp [data-testid="stFormSubmitButton"],
+html body .stApp [data-testid="stFormSubmitButton"] > div,
+html body .stApp [data-testid="stFormSubmitButton"] button { width: 100% !important; }
+html body .stApp [data-testid="stFormSubmitButton"] button {
+    height: 46px; margin-top: 6px; border: 0 !important; border-radius: 10px !important;
+    background: linear-gradient(135deg, #0EA5E9, #2563EB) !important;
+    color: #FFFFFF !important; font-weight: 700 !important; font-size: 15px; justify-content: center;
+}
+html body .stApp [data-testid="stFormSubmitButton"] button * { text-align: center !important; color: #FFFFFF !important; }
+html body .stApp [data-testid="stFormSubmitButton"] button:hover { filter: brightness(1.1); }
+
+/* --- پیام خطای زیر هر فیلد --- */
+.field-error { color: #FCA5A5; font-size: 12.5px; line-height: 1.8; margin: -4px 0 6px; text-align: right; direction: rtl; }
+
+/* --- کارت تأیید ثبت و کارت هشدار --- */
+.ok-card, .warn-card {
+    display: flex; align-items: flex-start; gap: 14px; direction: rtl;
+    border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+}
+.ok-card { background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); }
+.warn-card { background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); }
+.ok-icon, .warn-icon {
+    flex: none; width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 800; font-size: 18px;
+}
+.ok-icon { background: #10B981; color: #04130D; }
+.warn-icon { background: #F59E0B; color: #1C1203; }
+.ok-title { font-size: 16px; font-weight: 800; color: #ECFDF5; line-height: 1.7; }
+.warn-title { font-size: 16px; font-weight: 800; color: #FEF3C7; line-height: 1.7; }
+.ok-sub { font-size: 13px; color: #A7F3D0; line-height: 2; }
+.warn-sub { font-size: 13px; color: #FDE68A; line-height: 2; }
+
+/* --- فهرست آخرین اعضا --- */
+.recent { background: #111A2E; border: 1px solid #1E293B; border-radius: 16px; padding: 16px; direction: rtl; }
+.recent-title { font-size: 14px; font-weight: 700; color: #CBD5E1; margin-bottom: 6px; }
+.recent-empty { font-size: 13px; color: #64748B; padding: 10px 0; }
+.recent-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.recent-item + .recent-item { border-top: 1px solid #1E293B; }
+.recent-new { background: rgba(56, 189, 248, 0.07); border-radius: 10px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
+.avatar {
+    flex: none; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+    background: #0F2A3F; color: #38BDF8; font-weight: 800;
+}
+.r-main { flex: 1; min-width: 0; }
+.r-name { font-size: 14px; font-weight: 700; color: #E2E8F0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-sub { font-size: 12px; color: #64748B; }
+.chip { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.chip-green { background: rgba(16, 185, 129, 0.14); color: #34D399; }
+.chip-red { background: rgba(239, 68, 68, 0.14); color: #F87171; }
+.chip-gray { background: rgba(148, 163, 184, 0.14); color: #94A3B8; }
+
 /* --- شمارنده نتایج؛ فاصله پایین عمدی است (نوار ابزار جدول روی لبه بالای آن می‌نشیند) --- */
 .result-count { font-size: 13px; color: #94A3B8; margin: 2px 0 28px; text-align: right; direction: rtl; }
 

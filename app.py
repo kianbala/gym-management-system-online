@@ -22,6 +22,7 @@ from ai_analytics import (
 from auth_ui import render_auth_page
 from ui_styles import FONT_STYLE
 from panel_ui import render_sidebar, render_dashboard
+from member_ui import render_add_member
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
 
@@ -164,42 +165,8 @@ else:
 
     # --- بخش ۲: ثبت عضو جدید ---
     elif choice == "ثبت عضو جدید":
-        st.subheader("➕ ثبت عضو جدید")
-        with st.form("add_member_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                first_name = st.text_input("نام")
-                last_name = st.text_input("نام خانوادگی")
-            with col2:
-                national_id = st.text_input("کد ملی (۱۰ رقمی)")
-                phone_number = st.text_input("شماره تماس (۱۱ رقمی)")
-                
-            submit = st.form_submit_button("ثبت عضو", type="primary")
-            
-            if submit:
-                first_name_clean = first_name.strip()
-                last_name_clean = last_name.strip()
-                n_id = national_id.strip()
-                ph = phone_number.strip()
-                
-                if first_name_clean and last_name_clean and n_id and ph:
-                    if len(n_id) != 10 or not n_id.isdigit():
-                        st.warning("⚠️ کد ملی باید دقیقاً ۱۰ رقم عددی باشد.")
-                    elif len(ph) != 11 or not ph.isdigit():
-                        st.warning("⚠️ شماره تماس باید دقیقاً ۱۱ رقم عددی باشد (مثلاً 09123456789).")
-                    else:
-                        full_name = f"{first_name_clean} {last_name_clean}"
-                        success, msg = add_member(full_name, ph, n_id, club_id, subscription_days=0)
-                        if success:
-                            st.success(msg)
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                else:
-                    st.warning("لطفاً تمامی فیلدها را پر کنید.")
+        render_add_member(club_id)
 
-    # --- بخش ۳: ثبت ورود ---
     elif choice == "ثبت ورود (تردد)":
         st.subheader("🚪 ثبت ورود ورزشکار و کسر جلسه")
         
@@ -261,6 +228,10 @@ else:
         st.subheader("💳 اختصاص بسته جدید به عضو")
         
         raw_members = get_all_members(club_id)
+
+        # اگر از صفحه «ثبت عضو جدید» آمده‌ایم، جستجو با کد ملی عضو تازه پر می‌شود
+        if "assign_prefill" in st.session_state:
+            st.session_state["assign_search"] = st.session_state.pop("assign_prefill")
 
         search_input = st.text_input("🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):", placeholder="مثلاً: حسین، 0912...", key="assign_search")
 
