@@ -64,57 +64,50 @@ html body .stApp header[data-testid="stHeader"] {
     margin: 6px 0 0; font-size: 14px; line-height: 2; color: #94A3B8;
 }
 
-/* --- تب‌ها: دو گزینه هم‌عرض داخل یک کپسول --- */
-html body .stApp div[data-baseweb="tab-list"] {
+/* --- تب‌ها: دو گزینه هم‌عرض داخل یک کپسول ---
+   انتخابگرها عمداً بر پایه نقش‌های ARIA (tablist / tab) هستند تا به نسخه Streamlit وابسته نباشند. */
+html body .stApp [role="tablist"] {
     width: 100%; gap: 4px; padding: 4px;
     background: #0F172A; border: 1px solid #1E293B; border-radius: 12px;
-    justify-content: stretch !important;
 }
-html body .stApp button[data-baseweb="tab"] {
-    flex: 1; justify-content: center; height: 40px;
-    border-radius: 9px; color: #94A3B8; font-weight: 600;
+html body .stApp [role="tab"] {
+    flex: 1 1 0; justify-content: center; text-align: center !important;
+    height: 40px; border-radius: 9px; color: #94A3B8; font-weight: 600;
 }
-html body .stApp button[data-baseweb="tab"][aria-selected="true"] {
+html body .stApp [role="tab"] p { color: inherit !important; text-align: center !important; }
+html body .stApp [role="tab"][aria-selected="true"] {
     background: rgba(56, 189, 248, 0.14); color: #38BDF8;
 }
-html body .stApp div[data-baseweb="tab-highlight"],
-html body .stApp div[data-baseweb="tab-border"] { display: none !important; }
+html body .stApp [data-baseweb="tab-highlight"],
+html body .stApp [data-baseweb="tab-border"] { display: none !important; }
 
-/* --- کارت فرم --- */
+/* --- کارت فرم (بدون پس‌زمینه جدا تا فیلدهای ورودی با ظاهر پیش‌فرض Streamlit دیده شوند) --- */
 html body .stApp [data-testid="stForm"] {
-    background: #111A2E; border: 1px solid #1E293B; border-radius: 16px;
+    background: transparent; border: 1px solid #1E293B; border-radius: 16px;
     padding: 22px 20px 20px;
 }
 html body .stApp [data-testid="stWidgetLabel"] p {
     font-size: 14px; font-weight: 600; color: #CBD5E1;
 }
-
-/* --- فیلدها --- */
-html body .stApp div[data-baseweb="input"],
-html body .stApp div[data-baseweb="base-input"] {
-    background: #0B1324 !important; border-radius: 10px !important;
-}
-html body .stApp div[data-baseweb="input"] {
-    border: 1px solid #243049 !important;
-}
-html body .stApp div[data-baseweb="input"]:focus-within {
-    border-color: #38BDF8 !important;
-    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18) !important;
-}
-html body .stApp input { height: 46px; }
 html body .stApp input::placeholder { color: #64748B !important; opacity: 1; }
 
-/* --- دکمه اصلی (تمام‌عرض) --- */
-html body .stApp [data-testid="stFormSubmitButton"] { width: 100% !important; }
+/* --- دکمه اصلی (تمام‌عرض): همه ظرف‌های بین دکمه و فرم هم تمام‌عرض می‌شوند --- */
+html body .stApp [data-testid="stFormSubmitButton"],
+html body .stApp [data-testid="stFormSubmitButton"] > div,
 html body .stApp [data-testid="stFormSubmitButton"] button {
-    width: 100% !important; height: 46px; margin-top: 6px;
+    width: 100% !important;
+}
+html body .stApp [data-testid="stFormSubmitButton"] button {
+    height: 46px; margin-top: 6px;
     border: 0 !important; border-radius: 10px !important;
     background: linear-gradient(135deg, #0EA5E9, #2563EB) !important;
     color: #FFFFFF !important; font-weight: 700 !important; font-size: 15px;
+    justify-content: center;
 }
-html body .stApp [data-testid="stFormSubmitButton"] button:hover {
-    filter: brightness(1.1);
+html body .stApp [data-testid="stFormSubmitButton"] button * {
+    text-align: center !important; justify-content: center; color: #FFFFFF !important;
 }
+html body .stApp [data-testid="stFormSubmitButton"] button:hover { filter: brightness(1.1); }
 html body .stApp [data-testid="stFormSubmitButton"] button:focus-visible {
     outline: 2px solid #38BDF8; outline-offset: 2px;
 }

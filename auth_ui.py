@@ -12,6 +12,14 @@ from ui_styles import AUTH_STYLE, AUTH_HERO_HTML, AUTH_POINTS_HTML
 _FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
+def _primary_submit(label):
+    """دکمه ارسال فرم به‌صورت تمام‌عرض؛ سازگار با نسخه‌های قدیمی و جدید Streamlit"""
+    try:
+        return st.form_submit_button(label, type="primary", width="stretch")
+    except TypeError:
+        return st.form_submit_button(label, type="primary", use_container_width=True)
+
+
 def _start_session(username, club_id, welcome):
     """ثبت وضعیت ورود در session و رفتن به پنل اصلی"""
     st.session_state.logged_in = True
@@ -44,7 +52,7 @@ def _login_form():
     with st.form("login_form"):
         username = st.text_input("نام کاربری", placeholder="نام کاربری خود را وارد کنید")
         password = st.text_input("رمز عبور", type="password", placeholder="رمز عبور خود را وارد کنید")
-        submitted = st.form_submit_button("ورود", type="primary")
+        submitted = _primary_submit("ورود")
 
         if submitted:
             username, password = username.strip(), password.strip()
@@ -70,7 +78,7 @@ def _register_form():
             placeholder=f"حداقل {str(MIN_PASSWORD_LEN).translate(_FA_DIGITS)} کاراکتر",
         )
         confirm = st.text_input("تکرار رمز عبور", type="password", placeholder="رمز عبور را دوباره وارد کنید")
-        submitted = st.form_submit_button("ساخت حساب باشگاه", type="primary")
+        submitted = _primary_submit("ساخت حساب باشگاه")
 
         if submitted:
             username, password, confirm = username.strip(), password.strip(), confirm.strip()
