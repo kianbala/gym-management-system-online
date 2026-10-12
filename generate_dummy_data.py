@@ -27,7 +27,7 @@ def get_user_club_id(cursor, username):
             # اگر club_id مقدار داشت همان را برمی‌گرداند، در غیر این صورت id کاربر را استفاده می‌کند
             return res[0] if res[0] is not None else res[1]
     except Exception as e:
-        print(f"⚠️ خطا در استعلام کاربر: {e}")
+        print(f"[WARNING] Failed to look up user: {e}")
     
     return None
 
@@ -40,11 +40,11 @@ def generate_data(username):
         club_id = get_user_club_id(cursor, username)
 
         if club_id is None:
-            print(f"\n❌ خطا: همچین شخصی وجود ندارد! (کاربری با نام کاربری '{username}' در پایگاه داده یافت نشد)")
+            print(f"\n[ERROR] User '{username}' was not found in the database.")
             return
 
-        print(f"\n✅ مدیر سیستم تأیید شد. شناسه باشگاه: '{club_id}'")
-        print(f"⏳ در حال ساخت ۳۰ عضو نمونه و ثبت ترددهای مربوطه...")
+        print(f"\n[OK] Admin verified. Club ID: '{club_id}'")
+        print("[INFO] Creating 30 sample members and their check-ins...")
 
         now = datetime.now(TEHRAN_TZ)
         
@@ -165,17 +165,17 @@ def generate_data(username):
             added_count += 1
 
         conn.commit()
-        print(f"✅ با موفقیت ۳۰ عضو و {total_checkins_added} رکورد تردد برای مدیر '{username}' (شناسه: {club_id}) ثبت شد.")
+        print(f"[OK] Created 30 members and {total_checkins_added} check-in records for admin '{username}' (club ID: {club_id}).")
 
     except Exception as e:
         conn.rollback()
-        print(f"❌ خطا در هنگام ثبت داده‌ها: {e}")
+        print(f"[ERROR] Failed while inserting data: {e}")
     finally:
         conn.close()
 
 if __name__ == "__main__":
-    username_input = input("لطفاً نام کاربری مدیر سیستم را وارد کنید: ").strip()
+    username_input = input("Enter the admin username: ").strip()
     while not username_input:
-        username_input = input("نام کاربری نمی‌تواند خالی باشد: ").strip()
+        username_input = input("Username cannot be empty. Enter the admin username: ").strip()
         
     generate_data(username_input)
