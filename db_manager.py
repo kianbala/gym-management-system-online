@@ -60,59 +60,98 @@ def get_connection():
 
 # --- ۳. توابع اصلی مدیریت اعضا و دیتابیس ---
 
+_TO_LATIN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def _normalize_digits(value):
+    """ارقام فارسی/عربی را به لاتین تبدیل و فاصله‌های اطراف را حذف می‌کند (None بدون تغییر می‌ماند)"""
+    if value is None:
+        return None
+    return str(value).translate(_TO_LATIN_DIGITS).strip()
+
+
+def _duplicate_member_message(error):
+    """
+    اگر خطا نقض قید یکتایی دیتابیس باشد (مثلاً دو ثبت‌نام هم‌زمان با کد ملی یکسان)،
+    پیام فارسی مناسب برمی‌گرداند؛ در غیر این صورت None.
+    """
+    text = str(error).lower()
+    constraint = (getattr(getattr(error, "diag", None), "constraint_name", None) or "").lower()
+    is_unique = getattr(error, "pgcode", None) == "23505" or "duplicate key" in text or "unique constraint" in text
+    if not is_unique:
+        return None
+    hint = constraint + " " + text
+    if "national_id" in hint:
+        return "خطا: عضوی با این کد ملی قبلاً ثبت شده است!"
+    if "phone" in hint:
+        return "خطا: عضوی با این شماره تماس قبلاً ثبت شده است!"
+    return "خطا: عضوی با این مشخصات قبلاً ثبت شده است!"
+
+
 def add_member(full_name, phone, national_id, club_id, subscription_days=0, first_name=None, last_name=None):
     """
     ثبت عضو جدید در دیتابیس.
     اگر first_name و last_name جداگانه داده شوند همان‌ها ذخیره می‌شوند (نام‌های دوبخشی مثل «محمد رضا» درست ثبت می‌شوند).
     در غیر این صورت full_name با اولین فاصله به نام و نام خانوادگی شکسته می‌شود (رفتار قبلی).
+    کد ملی و شماره تماس قبل از ذخیره به ارقام لاتین تبدیل می‌شوند تا قید یکتایی دیتابیس دور زده نشود.
     """
+    national_id = _normalize_digits(national_id)
+    phone = _normalize_digits(phone)
+
     conn = get_connection()
-    cursor = conn.cursor()
-    
-    if first_name is not None:
-        first_name = first_name.strip()
-        last_name = (last_name or '').strip()
-    else:
-        parts = full_name.strip().split(' ', 1)
-        first_name = parts[0]
-        last_name = parts[1] if len(parts) > 1 else ''
-    
-    cursor.execute("""
-        SELECT national_id, phone_number 
-        FROM public.members 
-        WHERE (national_id = %s OR phone_number = %s) AND club_id = %s
-    """, (national_id, phone, club_id))
-    
-    existing = cursor.fetchone()
-    if existing:
-        conn.close()
-        if existing[0] == national_id:
-            return False, "خطا: عضوی با این کد ملی قبلاً ثبت شده است!"
-        else:
-            return False, "خطا: عضوی با این شماره تماس قبلاً ثبت شده است!"
-            
+
     try:
+        cursor = conn.cursor()
+
+        if first_name is not None:
+            first_name = first_name.strip()
+            last_name = (last_name or '').strip()
+        else:
+            parts = full_name.strip().split(' ', 1)
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else ''
+
+        cursor.execute("""
+            SELECT national_id, phone_number 
+            FROM public.members 
+            WHERE (national_id = %s OR phone_number = %s) AND club_id = %s
+        """, (national_id, phone, club_id))
+
+        existing = cursor.fetchone()
+        if existing:
+            if national_id and existing[0] == national_id:
+                return False, "خطا: عضوی با این کد ملی قبلاً ثبت شده است!"
+            return False, "خطا: عضوی با این شماره تماس قبلاً ثبت شده است!"
+
         cursor.execute("""
             INSERT INTO public.members (first_name, last_name, national_id, phone_number, club_id) 
             VALUES (%s, %s, %s, %s, %s)
             RETURNING member_id
         """, (first_name, last_name, national_id, phone, club_id))
-        
+
         member_id = cursor.fetchone()[0]
-        
+
         if subscription_days > 0:
             cursor.execute("""
                 INSERT INTO public.subscriptions 
                 (member_id, remaining_sessions, start_date, end_date, status, club_id)
                 VALUES (%s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE', %s)
             """, (member_id, subscription_days, club_id))
-            
+
         conn.commit()
-        conn.close()
         return True, f"عضو جدید '{full_name}' با موفقیت ثبت شد."
     except Exception as e:
-        conn.close()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        friendly = _duplicate_member_message(e)
+        if friendly:
+            return False, friendly
         return False, f"خطا در ثبت عضو: {e}"
+    finally:
+        conn.close()
+
 
 def get_all_members(club_id):
     """دریافت کلیه اعضا همراه با اطلاعات آخرین اشتراک"""
