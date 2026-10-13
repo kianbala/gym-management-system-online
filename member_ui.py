@@ -194,7 +194,13 @@ def _try_add(club_id, cleaned):
         st.error(duplicate_message(*dup))
         return False
 
-    ok, msg = add_member(cleaned["full_name"], cleaned["phone"], cleaned["national_id"], club_id, subscription_days=0)
+    try:
+        ok, msg = add_member(
+            cleaned["full_name"], cleaned["phone"], cleaned["national_id"], club_id, subscription_days=0,
+            first_name=cleaned["first_name"], last_name=cleaned["last_name"],
+        )
+    except TypeError:   # db_manager.py قدیمی (بدون پارامترهای نام جداگانه)
+        ok, msg = add_member(cleaned["full_name"], cleaned["phone"], cleaned["national_id"], club_id, subscription_days=0)
     if not ok:
         st.error(msg)
         return False

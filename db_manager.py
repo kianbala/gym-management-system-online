@@ -60,14 +60,22 @@ def get_connection():
 
 # --- ۳. توابع اصلی مدیریت اعضا و دیتابیس ---
 
-def add_member(full_name, phone, national_id, club_id, subscription_days=0):
-    """ثبت عضو جدید در دیتابیس"""
+def add_member(full_name, phone, national_id, club_id, subscription_days=0, first_name=None, last_name=None):
+    """
+    ثبت عضو جدید در دیتابیس.
+    اگر first_name و last_name جداگانه داده شوند همان‌ها ذخیره می‌شوند (نام‌های دوبخشی مثل «محمد رضا» درست ثبت می‌شوند).
+    در غیر این صورت full_name با اولین فاصله به نام و نام خانوادگی شکسته می‌شود (رفتار قبلی).
+    """
     conn = get_connection()
     cursor = conn.cursor()
     
-    parts = full_name.strip().split(' ', 1)
-    first_name = parts[0]
-    last_name = parts[1] if len(parts) > 1 else ''
+    if first_name is not None:
+        first_name = first_name.strip()
+        last_name = (last_name or '').strip()
+    else:
+        parts = full_name.strip().split(' ', 1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ''
     
     cursor.execute("""
         SELECT national_id, phone_number 
