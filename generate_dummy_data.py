@@ -15,6 +15,19 @@ LAST_NAMES = [
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
 
+def make_national_id():
+    """
+    کد ملی ۱۰ رقمی ساختگی با رقم کنترل «درست» (مثل کدهای واقعی؛ صفر ابتدایی هم ممکن است).
+    این‌طور هشدار رقم کنترل صفحه «ثبت عضو جدید» برای داده‌های نمونه فعال نمی‌شود.
+    """
+    while True:
+        base = "".join(random.choice("0123456789") for _ in range(9))
+        remainder = sum(int(d) * (10 - i) for i, d in enumerate(base)) % 11
+        code = base + str(remainder if remainder < 2 else 11 - remainder)
+        if len(set(code)) > 1:          # کدهای تک‌رقمی‌تکراری مثل 1111111111 نامعتبرند
+            return code
+
+
 def get_user_club_id(cursor, username):
     """بررسی وجود مدیر در پایگاه داده و استخراج شناسه باشگاه او"""
     try:
@@ -63,7 +76,7 @@ def generate_data(username):
             f_name = random.choice(FIRST_NAMES)
             l_name = random.choice(LAST_NAMES)
             
-            national_id = f"{random.randint(1000000000, 9999999999)}"
+            national_id = make_national_id()
             phone_number = f"0912{random.randint(1000000, 9999999)}"
 
             cursor.execute(
