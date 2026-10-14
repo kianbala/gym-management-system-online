@@ -23,6 +23,7 @@ from auth_ui import render_auth_page
 from ui_styles import FONT_STYLE
 from panel_ui import render_sidebar, render_dashboard
 from member_ui import render_add_member
+from checkin_ui import render_checkin
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
 
@@ -168,60 +169,7 @@ else:
         render_add_member(club_id)
 
     elif choice == "ثبت ورود (تردد)":
-        st.subheader("🚪 ثبت ورود ورزشکار و کسر جلسه")
-        
-        raw_members = get_all_members(club_id)
-        
-        active_members = []
-        for m in raw_members:
-            sub_days = m.get("subscription_days", 0) or 0
-            db_status = m.get("status", "EXPIRED")
-            
-            if db_status == "ACTIVE" and sub_days > 0:
-                active_members.append(m)
-        
-        search_input = st.text_input("🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):", placeholder="مثلاً: علی، 0912 یا کد عضویت...")
-        
-        filtered_members = active_members
-        if search_input.strip():
-            q = search_input.strip().lower()
-            filtered_members = [
-                m for m in active_members
-                if q in str(m.get("name", "")).lower()
-                or q in str(m.get("phone", ""))
-                or q in str(m.get("national_id", ""))
-                or q in str(m.get("id", ""))
-            ]
-            
-        if filtered_members:
-            st.caption(f"🔍 تعداد {len(filtered_members)} مورد یافت شد:")
-            
-            options = {
-                f"👤 {m.get('name', '')} | 📱 {m.get('phone', '')} | 🔢 باقی‌مانده: {m.get('subscription_days', 0)} جلسه (کد عضویت: {m.get('id')})": m
-                for m in filtered_members
-            }
-            
-            selected_label = st.selectbox("لیست افراد یافت‌شده:", list(options.keys()))
-            selected_member = options[selected_label]
-            member_id = selected_member.get('id')
-            
-            st.info(
-                f"**عضو انتخاب‌شده:** {selected_member.get('name')}  \n"
-                f"**جلسات باقی‌مانده فعلی:** {selected_member.get('subscription_days', 0)} جلسه"
-            )
-            
-            if st.button("🟢 ثبت حضور (کاهش ۱ جلسه)", type="primary"):
-                if record_attendance(member_id, club_id):
-                    if decrement_subscription(member_id, club_id):
-                        st.success("ورود با موفقیت ثبت شد و ۱ جلسه کسر گردید.")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("ورود ثبت شد اما در کسر جلسه خطایی رخ داد.")
-                else:
-                    st.error("خطا در ثبت ورود.")
-        else:
-            st.warning("هیچ عضو فعالی با این مشخصات و جلسات باقی‌مانده یافت نشد.")
+        render_checkin(club_id)
 
     # --- بخش ۴: تخصیص بسته ---
     elif choice == "تخصیص بسته":

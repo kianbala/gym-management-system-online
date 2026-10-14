@@ -253,6 +253,34 @@ html body .stApp [data-testid="stFormSubmitButton"] button:hover { filter: brigh
 .chip-red { background: rgba(239, 68, 68, 0.14); color: #F87171; }
 .chip-gray { background: rgba(148, 163, 184, 0.14); color: #94A3B8; }
 
+/* --- صفحه ثبت ورود: کارت عضو، نوار جلسات، پنل ورودهای امروز --- */
+.ci-card { background: #111A2E; border: 1px solid #1E293B; border-radius: 14px; padding: 14px 16px; direction: rtl; }
+.ci-card-off { background: #0E1626; }
+.ci-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ci-name { font-size: 16px; font-weight: 800; color: #F1F5F9; line-height: 1.7; }
+.ci-meta { font-size: 12.5px; color: #64748B; }
+.ci-line { display: flex; align-items: center; gap: 12px; margin-top: 6px; font-size: 12.5px; color: #94A3B8; }
+.ci-bar { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: #1E293B; overflow: hidden; }
+.ci-bar-fill { height: 100%; border-radius: 999px; background: #10B981; }
+.ci-bar-low .ci-bar-fill { background: #F59E0B; }
+.ci-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip-amber { background: rgba(245, 158, 11, 0.14); color: #FBBF24; }
+.chip-blue { background: rgba(56, 189, 248, 0.14); color: #38BDF8; }
+.ci-empty {
+    border: 1px dashed #243049; border-radius: 14px; padding: 22px 18px; direction: rtl;
+    font-size: 13.5px; line-height: 2; color: #94A3B8; text-align: center;
+}
+.today { background: #111A2E; border: 1px solid #1E293B; border-radius: 16px; padding: 16px; direction: rtl; margin-bottom: 8px; }
+.today-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.today-title { font-size: 14px; font-weight: 700; color: #CBD5E1; }
+.today-count { font-size: 12px; font-weight: 700; color: #38BDF8; }
+.today-empty { font-size: 13px; color: #64748B; padding: 10px 0; }
+.today-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; font-size: 13.5px; }
+.today-item + .today-item { border-top: 1px solid #1E293B; }
+.today-time { flex: none; min-width: 44px; color: #64748B; font-size: 12.5px; }
+.today-name { color: #E2E8F0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-undo { font-size: 13px; color: #CBD5E1; direction: rtl; }
+
 /* --- شمارنده نتایج؛ فاصله پایین عمدی است (نوار ابزار جدول روی لبه بالای آن می‌نشیند) --- */
 .result-count { font-size: 13px; color: #94A3B8; margin: 2px 0 28px; text-align: right; direction: rtl; }
 

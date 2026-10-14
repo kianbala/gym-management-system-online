@@ -167,6 +167,7 @@ def build_rows(raw_members, attendance_logs, sub_checkins, today):
             "sessions_left": sessions_left,
             "total": total,
             "end_date": end_date,
+            "days_left": days_left,
             "days_absent": days_absent,
         })
     return rows
@@ -309,6 +310,8 @@ def render_sidebar():
             st.session_state.nav_choice = key
             st.session_state.pop("last_added", None)   # کارت تأیید ثبت عضو فقط تا ترک صفحه می‌ماند
             st.session_state.pop("am_pending", None)
+            for _key in ("ci_last", "ci_confirm", "ci_flash"):   # وضعیت صفحه ثبت ورود
+                st.session_state.pop(_key, None)
             st.rerun()
 
     st.sidebar.divider()

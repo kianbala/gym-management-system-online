@@ -2,7 +2,7 @@ import psycopg2
 import pandas as pd
 import streamlit as st
 import sys
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
 
@@ -425,6 +425,167 @@ def get_attendance_logs(club_id):
         })
         
     return logs
+
+# ---------------------------------------------------------------
+# ثبت ورود (تردد): عملیات «اتمیک» و پشتیبان صفحه ثبت ورود
+# ---------------------------------------------------------------
+def _fail(code, message):
+    return {"ok": False, "code": code, "message": message}
+
+
+def check_in_member(member_id, club_id):
+    """
+    ثبت ورود و کسر یک جلسه در «یک تراکنش» (یا هر دو انجام می‌شود یا هیچ‌کدام).
+    ردیف اشتراک قفل می‌شود تا دو دستگاه هم‌زمان نتوانند دوبار جلسه کم کنند.
+    خروجی: {"ok": True, "remaining", "checkin_id", "checkin_time"}  یا  {"ok": False, "code", "message"}
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT subscription_id, remaining_sessions, (end_date < CURRENT_DATE) AS is_expired
+            FROM public.subscriptions
+            WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE'
+            ORDER BY subscription_id DESC
+            LIMIT 1
+            FOR UPDATE
+        """, (member_id, club_id))
+        row = cursor.fetchone()
+
+        if not row:
+            conn.rollback()
+            return _fail("NO_ACTIVE", "این عضو اشتراک فعالی ندارد.")
+        sub_id, remaining, is_expired = row
+        if is_expired:
+            conn.rollback()
+            return _fail("EXPIRED", "اشتراک این عضو منقضی شده است.")
+        if remaining is None or remaining <= 0:
+            conn.rollback()
+            return _fail("NO_SESSIONS", "جلسات این عضو تمام شده است.")
+
+        cursor.execute("""
+            UPDATE public.subscriptions
+            SET remaining_sessions = remaining_sessions - 1
+            WHERE subscription_id = %s
+            RETURNING remaining_sessions
+        """, (sub_id,))
+        new_remaining = cursor.fetchone()[0]
+
+        tehran_now = datetime.now(ZoneInfo("Asia/Tehran"))
+        cursor.execute("""
+            INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+            VALUES (%s, %s, %s, %s)
+            RETURNING checkin_id
+        """, (member_id, sub_id, tehran_now, club_id))
+        checkin_id = cursor.fetchone()[0]
+
+        conn.commit()
+        return {"ok": True, "remaining": new_remaining, "checkin_id": checkin_id, "checkin_time": tehran_now}
+    except Exception as e:
+        print(f"Error in check_in_member: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در ثبت ورود. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def _as_aware(value):
+    """مقدار زمان (datetime یا رشته ISO) را به datetime آگاه از منطقه زمانی تبدیل می‌کند"""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def undo_checkin(checkin_id, club_id, max_minutes=10):
+    """
+    لغو یک ورود اشتباه: ردیف تردد حذف و یک جلسه به اشتراک برمی‌گردد (در یک تراکنش).
+    فقط تا max_minutes دقیقه بعد از ثبت و تا زمانی که اشتراک آن ورود هنوز فعال است مجاز است.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT subscription_id, checkin_time
+            FROM public.checkins
+            WHERE checkin_id = %s AND club_id = %s
+            FOR UPDATE
+        """, (checkin_id, club_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return _fail("NOT_FOUND", "این ورود پیدا نشد یا قبلاً لغو شده است.")
+
+        sub_id, checkin_time = row
+        age = datetime.now(timezone.utc) - _as_aware(checkin_time)
+        if age > timedelta(minutes=max_minutes):
+            conn.rollback()
+            return _fail("TOO_OLD", f"فقط تا {max_minutes} دقیقه بعد از ثبت می‌توان ورود را لغو کرد.")
+
+        remaining = None
+        if sub_id is not None:
+            cursor.execute("""
+                UPDATE public.subscriptions
+                SET remaining_sessions = remaining_sessions + 1
+                WHERE subscription_id = %s AND club_id = %s AND status = 'ACTIVE'
+                RETURNING remaining_sessions
+            """, (sub_id, club_id))
+            updated = cursor.fetchone()
+            if not updated:
+                conn.rollback()
+                return _fail("NOT_ACTIVE", "اشتراک مربوط به این ورود دیگر فعال نیست؛ لغو ممکن نیست.")
+            remaining = updated[0]
+
+        cursor.execute("DELETE FROM public.checkins WHERE checkin_id = %s AND club_id = %s", (checkin_id, club_id))
+        conn.commit()
+        return {"ok": True, "remaining": remaining}
+    except Exception as e:
+        print(f"Error in undo_checkin: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در لغو ورود. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def get_today_checkins(club_id):
+    """ترددهای امروز (بر اساس روز تهران) از جدید به قدیم: [{checkin_id, member_id, checkin_time}]"""
+    day_start = datetime.now(ZoneInfo("Asia/Tehran")).replace(hour=0, minute=0, second=0, microsecond=0)
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT checkin_id, member_id, checkin_time
+            FROM public.checkins
+            WHERE club_id = %s AND checkin_time >= %s
+            ORDER BY checkin_time DESC
+        """, (club_id, day_start))
+        return [{"checkin_id": r[0], "member_id": r[1], "checkin_time": r[2]} for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_last_checkins(club_id):
+    """آخرین زمان تردد هر عضو: {member_id: datetime}"""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT member_id, MAX(checkin_time)
+            FROM public.checkins
+            WHERE club_id = %s AND member_id IS NOT NULL
+            GROUP BY member_id
+        """, (club_id,))
+        return {r[0]: r[1] for r in cursor.fetchall()}
+    finally:
+        conn.close()
+
 
 def reset_club_data(club_id):
     """حذف کلیه اطلاعات مربوط به یک باشگاه و ریست هوشمند شمارنده شناسه (Identity Sequence)"""
