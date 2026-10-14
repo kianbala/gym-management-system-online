@@ -24,6 +24,7 @@ from ui_styles import FONT_STYLE
 from panel_ui import render_sidebar, render_dashboard
 from member_ui import render_add_member
 from checkin_ui import render_checkin
+from assign_ui import render_assign
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
 
@@ -173,74 +174,8 @@ else:
 
     # --- بخش ۴: تخصیص بسته ---
     elif choice == "تخصیص بسته":
-        st.subheader("💳 اختصاص بسته جدید به عضو")
-        
-        raw_members = get_all_members(club_id)
+        render_assign(club_id)
 
-        # اگر از صفحه «ثبت عضو جدید» آمده‌ایم، جستجو با کد ملی عضو تازه پر می‌شود
-        if "assign_prefill" in st.session_state:
-            st.session_state["assign_search"] = st.session_state.pop("assign_prefill")
-
-        search_input = st.text_input("🔍 جستجوی ورزشکار (نام، شماره تماس، کد ملی یا کد عضویت):", placeholder="مثلاً: حسین، 0912...", key="assign_search")
-
-        filtered_members = raw_members
-        if search_input.strip():
-            q = search_input.strip().lower()
-            filtered_members = [
-                m for m in raw_members
-                if q in str(m.get("name", "")).lower()
-                or q in str(m.get("phone", ""))
-                or q in str(m.get("national_id", ""))
-                or q in str(m.get("id", ""))
-            ]
-
-        if filtered_members:
-            st.caption(f"🔍 تعداد {len(filtered_members)} مورد یافت شد:")
-
-            member_options = {}
-            can_assign_map = {}
-
-            for m in filtered_members:
-                m_id = m.get("id")
-                sub_days = m.get("subscription_days", 0) or 0
-                db_status = m.get("status", "EXPIRED")
-
-                can_assign = (db_status == "EXPIRED" or sub_days <= 0)
-                
-                status_text = "🟢 مجاز به تخصیص" if can_assign else f"🔴 دارای اشتراک فعال ({sub_days} جلسه)"
-                
-                label = f"👤 {m.get('name')} | 📱 {m.get('phone')} | 🆔 کد ملی: {m.get('national_id')} | {status_text}"
-                member_options[label] = m_id
-                can_assign_map[m_id] = can_assign
-
-            selected_label = st.selectbox("انتخاب عضو:", list(member_options.keys()))
-            selected_member_id = member_options[selected_label]
-            can_assign = can_assign_map[selected_member_id]
-
-            if can_assign:
-                st.info("✅ این کاربر آماده ثبت بسته جدید است.")
-            else:
-                st.warning("⚠ کاربر دارای اشتراک فعال و دارای جلسه است. امکان ثبت بسته جدید نیست.")
-
-            packages = {
-                "بسته ۱ | یک ماه ۱۲ جلسه | 800,000 تومان": 12,
-                "بسته ۲ | یک ماه ۲۴ جلسه | 1,400,000 تومان": 24
-            }
-
-            selected_package_label = st.selectbox("انتخاب بسته ورزشی:", list(packages.keys()))
-            sessions_to_add = packages[selected_package_label]
-
-            if st.button("🟢 فعال‌سازی بسته", type="primary", disabled=not can_assign):
-                if update_subscription(selected_member_id, sessions_to_add, club_id, overwrite=True):
-                    st.success(f"بسته جدید ({sessions_to_add} جلسه) با موفقیت برای کاربر فعال گردید.")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("خطا در اختصاص بسته.")
-        else:
-            st.warning("هیچ عضوی با این مشخصات یافت نشد.")
-
-    # --- بخش ۵: آمار و گزارشات ---
     elif choice == "📊 آمار و گزارشات":
         st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند ریزش اعضا")
         

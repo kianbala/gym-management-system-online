@@ -310,7 +310,7 @@ def render_sidebar():
             st.session_state.nav_choice = key
             st.session_state.pop("last_added", None)   # کارت تأیید ثبت عضو فقط تا ترک صفحه می‌ماند
             st.session_state.pop("am_pending", None)
-            for _key in ("ci_last", "ci_confirm", "ci_flash"):   # وضعیت صفحه ثبت ورود
+            for _key in ("ci_last", "ci_confirm", "ci_flash", "as_last", "as_member", "as_pkg", "as_flash"):   # وضعیت صفحه‌های ثبت ورود و تخصیص بسته
                 st.session_state.pop(_key, None)
             st.rerun()
 

@@ -281,6 +281,37 @@ html body .stApp [data-testid="stFormSubmitButton"] button:hover { filter: brigh
 .today-name { color: #E2E8F0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .today-undo { font-size: 13px; color: #CBD5E1; direction: rtl; }
 
+/* --- صفحه تخصیص بسته --- */
+.as-label { font-size: 13px; font-weight: 700; color: #94A3B8; margin: 2px 0; text-align: right; direction: rtl; }
+.sum-card {
+    background: rgba(56, 189, 248, 0.07); border: 1px solid rgba(56, 189, 248, 0.30); border-radius: 14px;
+    padding: 12px 16px; color: #BAE6FD; font-size: 13.5px; line-height: 2; direction: rtl;
+}
+.sum-card b { color: #E0F2FE; }
+.hist-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; direction: rtl; }
+.hist-item + .hist-item { border-top: 1px solid #1E293B; }
+.hist-main { flex: 1; min-width: 0; }
+.hist-title { font-size: 14px; font-weight: 700; color: #E2E8F0; }
+.hist-sub { font-size: 12px; color: #64748B; line-height: 1.8; }
+.guide-step { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; font-size: 13.5px; line-height: 1.9; color: #94A3B8; direction: rtl; }
+.guide-num {
+    flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    background: #0F2A3F; color: #38BDF8; font-weight: 800; font-size: 13px;
+}
+.guide-note { margin-top: 8px; padding-top: 10px; border-top: 1px solid #1E293B; font-size: 12.5px; line-height: 1.9; color: #64748B; }
+
+/* --- دکمه‌های اصلی در بخش اصلی صفحه (غیر از سایدبار): کنتراست بهتر --- */
+html body .stApp [data-testid="stMain"] button[kind="primary"],
+html body .stApp [data-testid="stMain"] button[data-testid="stBaseButton-primary"],
+html body .stApp section.main button[kind="primary"] {
+    background: linear-gradient(135deg, #0EA5E9, #2563EB) !important; border: 0 !important;
+    color: #FFFFFF !important; font-weight: 700 !important;
+}
+html body .stApp [data-testid="stMain"] button[kind="primary"] *,
+html body .stApp [data-testid="stMain"] button[data-testid="stBaseButton-primary"] * { color: #FFFFFF !important; }
+html body .stApp [data-testid="stMain"] button[kind="primary"]:hover,
+html body .stApp [data-testid="stMain"] button[data-testid="stBaseButton-primary"]:hover { filter: brightness(1.1); }
+
 /* --- شمارنده نتایج؛ فاصله پایین عمدی است (نوار ابزار جدول روی لبه بالای آن می‌نشیند) --- */
 .result-count { font-size: 13px; color: #94A3B8; margin: 2px 0 28px; text-align: right; direction: rtl; }
 

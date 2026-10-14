@@ -587,6 +587,140 @@ def get_last_checkins(club_id):
         conn.close()
 
 
+# ---------------------------------------------------------------
+# تخصیص بسته: عملیات «اتمیک» و پشتیبان صفحه تخصیص بسته
+# ---------------------------------------------------------------
+def assign_package(member_id, club_id, sessions, validity_days=30):
+    """
+    تخصیص بسته جدید به عضو در «یک تراکنش».
+    - ردیف عضو قفل می‌شود تا دو تخصیص هم‌زمان برای یک نفر دو اشتراک فعال نسازد.
+    - اگر عضو هنوز اشتراک فعالِ دارای جلسه دارد، تخصیص انجام نمی‌شود (قانون: بعد از تمام شدن جلسات یا انقضا).
+    - تاریخ شروع «امروزِ تهران» و پایان = شروع + validity_days است.
+    خروجی: {"ok": True, "subscription_id", "sessions", "start_date", "end_date"} یا {"ok": False, "code", "message"}
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT member_id FROM public.members WHERE member_id = %s AND club_id = %s FOR UPDATE",
+            (member_id, club_id),
+        )
+        if not cursor.fetchone():
+            conn.rollback()
+            return _fail("NOT_FOUND", "عضو پیدا نشد.")
+
+        cursor.execute("""
+            SELECT subscription_id, remaining_sessions, (end_date < CURRENT_DATE) AS is_expired
+            FROM public.subscriptions
+            WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE'
+            ORDER BY subscription_id DESC
+            LIMIT 1
+        """, (member_id, club_id))
+        row = cursor.fetchone()
+        if row and row[1] is not None and row[1] > 0 and not row[2]:
+            conn.rollback()
+            return _fail("HAS_ACTIVE", "این عضو هنوز اشتراک فعال و دارای جلسه دارد؛ بعد از تمام شدن جلسات یا انقضا می‌توان بسته جدید ثبت کرد.")
+
+        cursor.execute("""
+            UPDATE public.subscriptions SET status = 'EXPIRED'
+            WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE'
+        """, (member_id, club_id))
+
+        start_date = datetime.now(ZoneInfo("Asia/Tehran")).date()
+        end_date = start_date + timedelta(days=validity_days)
+        cursor.execute("""
+            INSERT INTO public.subscriptions
+            (member_id, remaining_sessions, start_date, end_date, status, club_id)
+            VALUES (%s, %s, %s, %s, 'ACTIVE', %s)
+            RETURNING subscription_id
+        """, (member_id, sessions, start_date, end_date, club_id))
+        subscription_id = cursor.fetchone()[0]
+
+        conn.commit()
+        return {"ok": True, "subscription_id": subscription_id, "sessions": sessions,
+                "start_date": start_date, "end_date": end_date}
+    except Exception as e:
+        print(f"Error in assign_package: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در ثبت بسته. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def undo_assignment(subscription_id, club_id, max_minutes=10):
+    """
+    لغو تخصیص اشتباه: اشتراک تازه حذف می‌شود (در یک تراکنش).
+    فقط تا max_minutes دقیقه بعد از ثبت و فقط اگر هنوز هیچ ورودی از آن اشتراک ثبت نشده باشد.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT created_at
+            FROM public.subscriptions
+            WHERE subscription_id = %s AND club_id = %s
+            FOR UPDATE
+        """, (subscription_id, club_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return _fail("NOT_FOUND", "این اشتراک پیدا نشد یا قبلاً لغو شده است.")
+
+        created_at = row[0]
+        if created_at is None or datetime.now(timezone.utc) - _as_aware(created_at) > timedelta(minutes=max_minutes):
+            conn.rollback()
+            return _fail("TOO_OLD", f"فقط تا {max_minutes} دقیقه بعد از ثبت می‌توان تخصیص را لغو کرد.")
+
+        cursor.execute("SELECT COUNT(*) FROM public.checkins WHERE subscription_id = %s", (subscription_id,))
+        if cursor.fetchone()[0] > 0:
+            conn.rollback()
+            return _fail("USED", "از این اشتراک ورود ثبت شده است؛ لغو ممکن نیست.")
+
+        cursor.execute("DELETE FROM public.subscriptions WHERE subscription_id = %s AND club_id = %s", (subscription_id, club_id))
+        conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        print(f"Error in undo_assignment: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در لغو تخصیص. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def get_member_subscriptions(member_id, club_id, limit=3):
+    """
+    تاریخچه اشتراک‌های یک عضو (جدید به قدیم) همراه با تعداد جلسه‌های مصرف‌شده:
+    [{subscription_id, remaining, start_date, end_date, status, used}]
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.subscription_id, s.remaining_sessions, s.start_date, s.end_date, s.status,
+                   COALESCE(c.used, 0) AS used
+            FROM public.subscriptions s
+            LEFT JOIN (
+                SELECT subscription_id, COUNT(*) AS used
+                FROM public.checkins
+                WHERE club_id = %s
+                GROUP BY subscription_id
+            ) c ON c.subscription_id = s.subscription_id
+            WHERE s.member_id = %s AND s.club_id = %s
+            ORDER BY s.subscription_id DESC
+            LIMIT %s
+        """, (club_id, member_id, club_id, limit))
+        return [{"subscription_id": r[0], "remaining": r[1], "start_date": r[2], "end_date": r[3],
+                 "status": r[4], "used": r[5]} for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def reset_club_data(club_id):
     """حذف کلیه اطلاعات مربوط به یک باشگاه و ریست هوشمند شمارنده شناسه (Identity Sequence)"""
     conn = get_connection()

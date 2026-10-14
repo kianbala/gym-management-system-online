@@ -284,6 +284,10 @@ def render_checkin(club_id):
                         st.session_state.pop("ci_confirm", None)
                         st.rerun()
 
+        prefill = st.session_state.pop("ci_prefill", None)       # از صفحه تخصیص بسته: جستجو با کد ملی پر می‌شود
+        if prefill:
+            st.session_state[f"ci_search_{st.session_state.get('ci_nonce', 0)}"] = prefill
+
         query = st.text_input(
             "جستجوی ورزشکار",
             placeholder="نام، شماره تماس، کد ملی یا کد عضویت را بنویسید…",
