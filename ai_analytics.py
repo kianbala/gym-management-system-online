@@ -16,9 +16,19 @@ def clean_id(val):
     except (ValueError, TypeError):
         return str(val).strip()
 
+# pandas نسخه ۲ به بعد، فرمت همه ردیف‌ها را از روی «اولین» ردیف حدس می‌زند.
+# ترددهای ثبت‌شده از برنامه میکروثانیه دارند ولی ترددهای نمونه ندارند؛ پس اگر جدیدترین تردد (اولِ لیست)
+# میکروثانیه داشته باشد، بقیه ردیف‌ها NaT می‌شوند و نمودار و تحلیل ریزش خراب می‌شود.
+# format="ISO8601" هر ردیف را جداگانه و با هر نوع قالب استاندارد ISO می‌خواند.
+_PANDAS_MAJOR = int(pd.__version__.split(".")[0])
+
+
 def parse_to_tehran(dt_series):
-    """تبدیل ایمن انواع فرمت‌های زمان به تایم‌زون تهران"""
-    parsed = pd.to_datetime(dt_series, utc=True, errors='coerce')
+    """تبدیل ایمن انواع فرمت‌های زمان (حتی قالب‌های مخلوط در یک ستون) به تایم‌زون تهران"""
+    if _PANDAS_MAJOR >= 2:
+        parsed = pd.to_datetime(dt_series, utc=True, errors='coerce', format='ISO8601')
+    else:
+        parsed = pd.to_datetime(dt_series, utc=True, errors='coerce')
     return parsed.dt.tz_convert(TEHRAN_TZ_STR)
 
 def get_hourly_occupancy(club_id):
