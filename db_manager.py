@@ -721,6 +721,21 @@ def get_member_subscriptions(member_id, club_id, limit=3):
         conn.close()
 
 
+def get_checkin_times(club_id):
+    """زمان همه ترددهای باشگاه (datetime آگاه از منطقه زمانی) برای نمودارهای صفحه آمار"""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT checkin_time
+            FROM public.checkins
+            WHERE club_id = %s AND checkin_time IS NOT NULL
+        """, (club_id,))
+        return [r[0] for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def reset_club_data(club_id):
     """حذف کلیه اطلاعات مربوط به یک باشگاه و ریست هوشمند شمارنده شناسه (Identity Sequence)"""
     conn = get_connection()

@@ -312,6 +312,48 @@ html body .stApp [data-testid="stMain"] button[data-testid="stBaseButton-primary
 html body .stApp [data-testid="stMain"] button[kind="primary"]:hover,
 html body .stApp [data-testid="stMain"] button[data-testid="stBaseButton-primary"]:hover { filter: brightness(1.1); }
 
+/* --- صفحه آمار: عنوان بخش‌ها، توزیع ریسک، کارت‌های پیگیری، نمودارها --- */
+.sec-head { margin: 26px 0 10px; direction: rtl; text-align: right; }
+.sec-title { font-size: 19px; font-weight: 800; color: #F1F5F9; line-height: 1.7; }
+.sec-sub { font-size: 13px; color: #94A3B8; line-height: 1.9; }
+
+.rk-card { background: #111A2E; border: 1px solid #1E293B; border-radius: 14px; padding: 14px 16px; margin-bottom: 8px; direction: rtl; }
+.rk-title { font-size: 14px; font-weight: 700; color: #CBD5E1; margin-bottom: 10px; }
+.rk-sub { font-size: 12px; font-weight: 500; color: #64748B; margin-right: 8px; }
+.rk-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: #1E293B; gap: 2px; direction: rtl; }
+.rk-seg { height: 100%; }
+.rk-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 10px; font-size: 12.5px; color: #94A3B8; }
+.rk-leg { display: inline-flex; align-items: center; gap: 8px; }
+
+.fu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 6px 0 8px; direction: rtl; }
+@media (max-width: 900px) { .fu-grid { grid-template-columns: minmax(0, 1fr); } }
+.fu-card { background: #111A2E; border: 1px solid #1E293B; border-radius: 14px; padding: 14px 16px; direction: rtl; }
+.fu-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.fu-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+a.act, a.act:visited {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 76px; height: 36px; padding: 0 14px;
+    border-radius: 10px; border: 1px solid #243049; background: #0E1626; color: #E2E8F0 !important;
+    font-size: 13px; font-weight: 700; text-decoration: none !important;
+}
+a.act:hover { border-color: #38BDF8; color: #38BDF8 !important; }
+a.act-wa { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.40); color: #34D399 !important; }
+.fu-nophone { font-size: 12.5px; color: #64748B; line-height: 36px; }
+.fu-msg { margin-top: 10px; font-size: 12.5px; color: #94A3B8; }
+.fu-msg summary { cursor: pointer; color: #64748B; }
+.fu-msg div { margin-top: 6px; line-height: 2; padding: 8px 10px; background: #0E1626; border-radius: 8px; user-select: all; }
+
+.chart-card { background: #111A2E; border: 1px solid #1E293B; border-radius: 16px; padding: 16px 16px 12px; margin-bottom: 8px; direction: rtl; }
+.chart-title { font-size: 14px; font-weight: 700; color: #CBD5E1; margin-bottom: 12px; }
+.chart-note { margin-top: 10px; font-size: 13px; line-height: 2; color: #94A3B8; min-height: 20px; }
+.chart-note b { color: #E2E8F0; }
+.bars { display: flex; align-items: stretch; gap: 6px; direction: rtl; }
+.bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.bar-val { font-size: 11px; color: #94A3B8; line-height: 1.6; min-height: 18px; }
+.bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.bar-fill { width: 100%; min-height: 2px; border-radius: 6px 6px 2px 2px; background: #2A4A7A; }
+.bar-hi { background: #38BDF8; }
+.bar-label { margin-top: 6px; font-size: 11px; color: #64748B; line-height: 1.4; }
+
 /* --- شمارنده نتایج؛ فاصله پایین عمدی است (نوار ابزار جدول روی لبه بالای آن می‌نشیند) --- */
 .result-count { font-size: 13px; color: #94A3B8; margin: 2px 0 28px; text-align: right; direction: rtl; }
 

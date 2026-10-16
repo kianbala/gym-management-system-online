@@ -25,6 +25,7 @@ from panel_ui import render_sidebar, render_dashboard
 from member_ui import render_add_member
 from checkin_ui import render_checkin
 from assign_ui import render_assign
+from stats_ui import render_stats
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
 
@@ -177,86 +178,8 @@ else:
         render_assign(club_id)
 
     elif choice == "📊 آمار و گزارشات":
-        st.subheader("🤖 ماژول تحلیلی و پیش‌بینی هوشمند ریزش اعضا")
-        
-        hourly_df = get_hourly_occupancy(club_id)
-        churn_df = predict_churn_risk(club_id)
-        
-        total_checkins = hourly_df['checkin_count'].sum() if not hourly_df.empty else 0
-        if not hourly_df.empty and total_checkins > 0:
-            peak_hour = hourly_df.loc[hourly_df['checkin_count'].idxmax()]['hour']
-            peak_str = f"ساعت {peak_hour}:00"
-        else:
-            peak_str = "نامشخص"
-            
-        total_members = churn_df.shape[0] if not churn_df.empty else 0
-        
-        if total_members > 0:
-            high_risk_cnt = churn_df[churn_df['risk_level'].str.contains('بالا|High', case=False, na=False)].shape[0]
-            medium_risk_cnt = churn_df[churn_df['risk_level'].str.contains('متوسط|Medium', case=False, na=False)].shape[0]
-            low_risk_cnt = churn_df[churn_df['risk_level'].str.contains('پایین|Low', case=False, na=False)].shape[0]
-            
-            high_pct = (high_risk_cnt / total_members) * 100
-            med_pct = (medium_risk_cnt / total_members) * 100
-            low_pct = (low_risk_cnt / total_members) * 100
-        else:
-            high_risk_cnt = medium_risk_cnt = low_risk_cnt = 0
-            high_pct = med_pct = low_pct = 0.0
+        render_stats(club_id)
 
-        m1, m2, m3, m4, m5 = st.columns(5)
-        
-        with m1:
-            st.metric("مجموع ترددها", f"{total_checkins} ورود")
-        with m2:
-            st.metric("شلوغ‌ترین زمان", peak_str)
-        with m3:
-            st.metric("ریسک بالا 🔴", f"{high_risk_cnt} نفر", f"{high_pct:.1f}%")
-        with m4:
-            st.metric("ریسک متوسط 🟡", f"{medium_risk_cnt} نفر", f"{med_pct:.1f}%")
-        with m5:
-            st.metric("ریسک پایین 🟢", f"{low_risk_cnt} نفر", f"{low_pct:.1f}%")
-        
-        st.markdown("---")
-        
-        col_table, col_chart = st.columns([1, 1])
-        
-        with col_table:
-            st.write("### ⚠️ پیش‌‌بینی ریسک ریزش اعضا (گزارش AI)")
-            
-            if not churn_df.empty:
-                df_display = churn_df.copy()
-                
-                df_display = df_display.rename(columns={
-                    'id': 'کد عضویت',
-                    'name': 'نام ورزشکار',
-                    'phone': 'شماره تماس',
-                    'subscription_days': 'جلسات باقی‌مانده',
-                    'days_since_last_checkin': 'مدت غیبت',
-                    'churn_risk_score': 'نمره ریسک',
-                    'risk_level': 'سطح ریسک'
-                })
-                
-                if 'مدت غیبت' in df_display.columns:
-                    df_display['مدت غیبت'] = df_display['مدت غیبت'].apply(
-                        lambda x: "بدون تردد" if (pd.isna(x) or x == 30) else f"{int(x)} روز"
-                    )
-
-                display_cols = ['کد عضویت', 'نام ورزشکار', 'شماره تماس', 'جلسات باقی‌مانده', 'مدت غیبت', 'نمره ریسک', 'سطح ریسک']
-                display_cols = [c for c in display_cols if c in df_display.columns]
-                
-                df_display = df_display[display_cols].sort_values(by='نمره ریسک', ascending=False)
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
-            else:
-                st.info("هیچ داده‌ای برای تحلیل یافت نشد.")
-
-        with col_chart:
-            st.write("### 📈 تحلیل ساعات شلوغی باشگاه")
-            if not hourly_df.empty:
-                st.bar_chart(data=hourly_df, x='hour', y='checkin_count', color="#1f77b4")
-            else:
-                st.info("داده‌ای برای تحلیل تردد وجود ندارد.")
-
-    # --- بخش ۶: مدیریت و حذف ---
     elif choice == "مدیریت و حذف":
         raw_members = get_all_members(club_id)
 
