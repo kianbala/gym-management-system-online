@@ -49,6 +49,16 @@ st.markdown("""
         opacity: 0 !important;
     }
 
+    /* ۲-ب. وقتی منو بسته است، خود کادر سایدبار هم حذف شود؛ در صفحه راست‌چین بخشی از آن به شکل یک نوار عمودی روی صفحه می‌ماند */
+    [data-testid="stSidebar"][aria-expanded="false"] {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
     /* ۳. تنظیم محتوای اصلی جهت عدم تداخل با لبه‌ها */
     .main .block-container {
         padding-top: 2rem !important;

@@ -5,6 +5,16 @@ from db_manager import get_connection
 
 TEHRAN_TZ = ZoneInfo("Asia/Tehran")
 
+# ------------------------------------------------------------------
+# تنظیمات داده نمونه
+# ------------------------------------------------------------------
+TOTAL_MEMBERS = 60
+RISK_SHARE = {"high": 0.15, "medium": 0.25}          # بقیه (۶۰٪) ریسک پایین
+# بازه امتیاز هر سطح؛ همان آستانه‌های صفحه «آمار و گزارشات» (۷۰ و ۴۰)
+SCORE_BAND = {"high": (70.0, 100.0), "medium": (40.0, 69.9), "low": (0.0, 39.9)}
+
+PHONE_PREFIXES = ['0912', '0919', '0935', '0936', '0937', '0910', '0911', '0913', '0914', '0901', '0902', '0990']
+
 FIRST_NAMES = [
     'علی', 'محمد', 'امیر', 'حسین', 'مهدی', 'رضا', 'سروش', 'آرش', 'کامران', 'نوید',
     'سارا', 'نیلوفر', 'مریم', 'زهرا', 'پریسا', 'فاطمه', 'مهرنوش', 'کیانا', 'مینا', 'نرگس'
@@ -14,6 +24,7 @@ LAST_NAMES = [
     'رضایی', 'محمدی', 'احمدی', 'کریمی', 'حسینی', 'کاظمی', 'قاسمی', 'نوری', 'مرادی', 'ابراهیمی',
     'صادقی', 'حیدری', 'موسوی', 'نجفی', 'مظفری', 'شریفی', 'فراهانی', 'جعفری', 'اکبری', 'باقری'
 ]
+
 
 def make_national_id():
     """
@@ -26,6 +37,18 @@ def make_national_id():
         code = base + str(remainder if remainder < 2 else 11 - remainder)
         if len(set(code)) > 1:          # کدهای تک‌رقمی‌تکراری مثل 1111111111 نامعتبرند
             return code
+
+
+def risk_score(total, remaining, days_absent):
+    """
+    همان فرمول امتیاز ریسک صفحه «آمار و گزارشات» (اگر آن فرمول را عوض کردید، اینجا هم عوض کنید):
+      جلسات از دست‌رفته = روز غیبت × (جلسات بسته ÷ ۳۰)  ← هر کدام ۱۵ امتیاز
+      مرحله بسته = ۳۰ × (سهم مصرف‌شده از بسته)²
+      جمع با سقف ۱۰۰
+    """
+    absence_points = days_absent * (total / 30.0) * 15.0
+    progress = max(0.0, min(1.0, 1.0 - remaining / total))
+    return min(100.0, absence_points + 30.0 * progress ** 2)
 
 
 def get_user_club_id(cursor, username):
@@ -44,6 +67,66 @@ def get_user_club_id(cursor, username):
     
     return None
 
+
+def build_risk_plan(total_members):
+    """فهرست سطح ریسک اعضا (۱۵٪ بالا، ۲۵٪ متوسط، بقیه پایین) به‌صورت درهم"""
+    n_high = round(total_members * RISK_SHARE["high"])
+    n_medium = round(total_members * RISK_SHARE["medium"])
+    plan = ['high'] * n_high + ['medium'] * n_medium + ['low'] * (total_members - n_high - n_medium)
+    random.shuffle(plan)
+    return plan
+
+
+def pick_target_score(profile):
+    """هدف امتیاز تصادفی داخل بازه سطح؛ برای ریسک پایین کمی به سمت امتیازهای کم متمایل است (واقع‌بینانه‌تر)"""
+    lo, hi = SCORE_BAND[profile]
+    if profile == 'low':
+        return lo + random.betavariate(1.2, 2.2) * (hi - lo)
+    return random.uniform(lo, hi)
+
+
+def pick_checkin_time(now, days_ago, all_hours):
+    """زمان آخرین تردد؛ اگر از «الان» جلوتر شد، یک روز عقب می‌رود"""
+    hour = random.choice(all_hours)
+    minute = random.randint(0, 59)
+    t = (now - timedelta(days=days_ago)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if t > now:
+        t -= timedelta(days=1)
+    return t
+
+
+def sample_member_profile(profile, now, all_hours):
+    """
+    نمونه‌گیری پارامترهای عضو تا امتیاز واقعی‌اش نزدیک یک هدف تصادفی داخل بازه سطحش بیفتد.
+    به‌جای «همه ریسک بالا = ۱۰۰»، امتیازها داخل ۷۰ تا ۱۰۰ (و به همین ترتیب متوسط و پایین) پخش می‌شوند.
+    """
+    lo, hi = SCORE_BAND[profile]
+    target = pick_target_score(profile)
+
+    for attempt in range(30000):
+        tolerance = 3.0 if attempt < 10000 else 10.0       # اگر هدف سخت بود، کمی آزادتر
+        total = random.choice([12, 24])
+        remaining = random.randint(0, total - 1)
+        last_time = pick_checkin_time(now, random.randint(0, 22), all_hours)
+        days_absent = (now.date() - last_time.date()).days
+        days_active = random.randint(max(days_absent, 1), 29)
+        used = total - remaining
+        if used - 1 > days_active - days_absent:           # ترددهای قبلی باید در روزهای «جدا» و قبل از آخرین تردد جا شوند
+            continue                                       # (یعنی حداکثر یک ورود در روز؛ مثلاً نمی‌شود ۲۱ جلسه مصرف کرد و ۱۵ روز غایب بود)
+
+        score = risk_score(total, remaining, days_absent)
+        if not (lo <= score <= hi):
+            continue
+        near = abs(score - target) <= tolerance
+        if hi >= 100.0 and target >= 100.0 - tolerance and score >= 100.0 - tolerance:
+            near = True                                    # هدف نزدیک سقف: ۱۰۰ هم پذیرفته می‌شود
+        if near:
+            return {"total": total, "remaining": remaining, "last_time": last_time,
+                    "days_absent": days_absent, "days_active": days_active, "score": score}
+
+    raise RuntimeError(f"Could not sample a '{profile}' member profile")
+
+
 def generate_data(username):
     conn = get_connection()
     cursor = conn.cursor()
@@ -57,7 +140,7 @@ def generate_data(username):
             return
 
         print(f"\n[OK] Admin verified. Club ID: '{club_id}'")
-        print("[INFO] Creating 30 sample members and their check-ins...")
+        print(f"[INFO] Creating {TOTAL_MEMBERS} sample members and their check-ins...")
 
         now = datetime.now(TEHRAN_TZ)
         
@@ -65,19 +148,22 @@ def generate_data(username):
         regular_hours = [8, 9, 10, 11, 14, 15, 16, 22]
         all_hours = peak_hours + regular_hours
 
-        risk_profiles = ['high_risk'] * 6 + ['medium_risk'] * 6 + ['low_risk'] * 18
-        random.shuffle(risk_profiles)
+        risk_profiles = build_risk_plan(TOTAL_MEMBERS)
 
+        used_names = set()
+        planned_scores = {'high': [], 'medium': [], 'low': []}
         added_count = 0
         total_checkins_added = 0
 
-        while added_count < 30:
+        while added_count < TOTAL_MEMBERS:
             risk_profile = risk_profiles[added_count]
             f_name = random.choice(FIRST_NAMES)
             l_name = random.choice(LAST_NAMES)
-            
+            if (f_name, l_name) in used_names:             # نام و نام خانوادگی تکراری نباشد
+                continue
+
             national_id = make_national_id()
-            phone_number = f"0912{random.randint(1000000, 9999999)}"
+            phone_number = f"{random.choice(PHONE_PREFIXES)}{random.randint(1000000, 9999999)}"
 
             cursor.execute(
                 "SELECT 1 FROM public.members WHERE (national_id = %s OR phone_number = %s) AND club_id = %s", 
@@ -85,6 +171,14 @@ def generate_data(username):
             )
             if cursor.fetchone():
                 continue
+
+            # پارامترهای عضو (بسته، جلسه باقی‌مانده، آخرین تردد، ...) با امتیاز ریسک هدف
+            profile = sample_member_profile(risk_profile, now, all_hours)
+            total_sessions = profile["total"]
+            remaining = profile["remaining"]
+            last_checkin_time = profile["last_time"]
+            days_active = profile["days_active"]
+            last_checkin_days_ago = profile["days_absent"]
 
             # درج عضو
             cursor.execute("""
@@ -94,31 +188,6 @@ def generate_data(username):
             """, (f_name, l_name, national_id, phone_number, club_id))
             
             member_id = cursor.fetchone()[0]
-            total_sessions = random.choice([12, 24])
-            
-            # تنظیم پارامترهای ریسک
-            if risk_profile == 'high_risk':
-                last_checkin_days_ago = random.randint(9, 20)
-                days_active = random.randint(last_checkin_days_ago + 1, 29)
-                remaining = random.randint(0, 3)
-
-            elif risk_profile == 'medium_risk':
-                if total_sessions == 12:
-                    remaining = random.randint(2, 5)
-                    last_checkin_days_ago = random.randint(6, 8)
-                else:
-                    remaining = random.randint(13, 15)
-                    last_checkin_days_ago = random.randint(4, 5)
-                days_active = random.randint(last_checkin_days_ago + 1, 29)
-
-            else:
-                if total_sessions == 12:
-                    remaining = random.randint(6, 11)
-                    last_checkin_days_ago = random.randint(0, 3)
-                else:
-                    remaining = random.randint(16, 23)
-                    last_checkin_days_ago = random.randint(0, 2)
-                days_active = random.randint(last_checkin_days_ago + 1, 29)
 
             start_date = (now - timedelta(days=days_active)).date()
             end_date = start_date + timedelta(days=30)
@@ -133,52 +202,41 @@ def generate_data(username):
 
             sub_id = cursor.fetchone()[0]
 
-            # درج ترددها
+            # درج ترددها (همیشه حداقل یک تردد: آخرین تردد)
             used_sessions = total_sessions - remaining
 
-            if used_sessions > 0:
-                hour = random.choice(all_hours)
-                minute = random.randint(0, 59)
-                
-                last_checkin_time = (now - timedelta(days=last_checkin_days_ago)).replace(
-                    hour=hour, minute=minute, second=0, microsecond=0
+            cursor.execute("""
+                INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
+                VALUES (%s, %s, %s, %s);
+            """, (member_id, sub_id, last_checkin_time, club_id))
+            total_checkins_added += 1
+
+            # ترددهای قبلی: هر کدام در یک روز جدا، بعد از روز آخرین تردد تا روز شروع اشتراک (حداکثر یک ورود در روز)
+            past_days = random.sample(range(last_checkin_days_ago + 1, days_active + 1), used_sessions - 1)
+            for past_days_ago in past_days:
+                past_hour = random.choice(all_hours)
+                past_minute = random.randint(0, 59)
+
+                past_checkin_time = (now - timedelta(days=past_days_ago)).replace(
+                    hour=past_hour, minute=past_minute, second=0, microsecond=0
                 )
-                if last_checkin_time > now:
-                    last_checkin_time -= timedelta(days=1)
 
                 cursor.execute("""
                     INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
                     VALUES (%s, %s, %s, %s);
-                """, (member_id, sub_id, last_checkin_time, club_id))
+                """, (member_id, sub_id, past_checkin_time, club_id))
                 total_checkins_added += 1
 
-                past_sessions_count = used_sessions - 1
-                start_past_days = min(last_checkin_days_ago + 1, days_active)
-                end_past_days = days_active
-
-                for _ in range(past_sessions_count):
-                    if start_past_days <= end_past_days:
-                        past_days_ago = random.randint(start_past_days, end_past_days)
-                    else:
-                        past_days_ago = days_active
-                        
-                    past_hour = random.choice(all_hours)
-                    past_minute = random.randint(0, 59)
-                    
-                    past_checkin_time = (now - timedelta(days=past_days_ago)).replace(
-                        hour=past_hour, minute=past_minute, second=0, microsecond=0
-                    )
-                    
-                    cursor.execute("""
-                        INSERT INTO public.checkins (member_id, subscription_id, checkin_time, club_id)
-                        VALUES (%s, %s, %s, %s);
-                    """, (member_id, sub_id, past_checkin_time, club_id))
-                    total_checkins_added += 1
-
+            used_names.add((f_name, l_name))
+            planned_scores[risk_profile].append(profile["score"])
             added_count += 1
 
         conn.commit()
-        print(f"[OK] Created 30 members and {total_checkins_added} check-in records for admin '{username}' (club ID: {club_id}).")
+        print(f"[OK] Created {TOTAL_MEMBERS} members and {total_checkins_added} check-in records for admin '{username}' (club ID: {club_id}).")
+        for level in ('high', 'medium', 'low'):
+            scores = planned_scores[level]
+            if scores:
+                print(f"[INFO] Risk {level:<6}: {len(scores):>2} members, score range {min(scores):.1f} - {max(scores):.1f}")
 
     except Exception as e:
         conn.rollback()
