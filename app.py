@@ -49,9 +49,43 @@ st.markdown("""
         opacity: 0 !important;
     }
 
-    /* ۲-ب. وقتی منو بسته است، خود کادر سایدبار هم حذف شود؛ در صفحه راست‌چین بخشی از آن به شکل یک نوار عمودی روی صفحه می‌ماند */
+    /* ۲-ب. وقتی منو بسته است، خود کادر سایدبار هم حذف شود؛ وگرنه نوار باریکی از آن (با متن‌های ریز عمودی) روی صفحه می‌ماند.
+       چند قانون جدا نوشته شده تا با نسخه‌های مختلف Streamlit کار کند؛ هر قانون مستقل است و اگر مرورگر یکی را نفهمد بقیه اثر می‌کنند. */
+
+    /* الف) نسخه‌هایی که وضعیت را با aria-expanded نشان می‌دهند */
     [data-testid="stSidebar"][aria-expanded="false"] {
         display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
+    /* ب) دکمه «باز کردن منو» فقط وقتی هست که منو بسته است؛ پس اگر هست، کادر سایدبار را پنهان کن
+          (:not([aria-expanded="true"]) تضمین می‌کند منوی باز هیچ‌وقت پنهان نشود) */
+    .stApp:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stSidebar"]:not([aria-expanded="true"]) {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+    .stApp:has([data-testid="stExpandSidebarButton"]) [data-testid="stSidebar"]:not([aria-expanded="true"]) {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+    .stApp:has([data-testid="collapsedControl"]) [data-testid="stSidebar"]:not([aria-expanded="true"]) {
+        display: none !important;
+        visibility: hidden !important;
         width: 0 !important;
         min-width: 0 !important;
         max-width: 0 !important;
