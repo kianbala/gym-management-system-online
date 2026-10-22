@@ -370,5 +370,56 @@ a.act-wa { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129
 @media (max-width: 760px) {
     .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* --- صفحه مدیریت و حذف: کارت عضو، کارت خطا، منطقه خطر، دکمه‌های قرمز --- */
+.mg-card {
+    display: flex; align-items: flex-start; gap: 12px; direction: rtl;
+    background: #111A2E; border: 1px solid #1E293B; border-radius: 14px; padding: 14px 16px;
+}
+.mg-card-off { background: #0E1626; }
+.mg-main { flex: 1; min-width: 0; }
+.mg-name { font-size: 16px; font-weight: 800; color: #F1F5F9; line-height: 1.7; word-break: break-word; }
+.mg-meta { font-size: 12.5px; color: #64748B; line-height: 1.9; }
+.mg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+.err-card {
+    display: flex; align-items: flex-start; gap: 14px; direction: rtl;
+    border-radius: 14px; padding: 14px 16px; margin: 8px 0 12px;
+    background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.40);
+}
+.err-icon {
+    flex: none; width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 800; font-size: 18px; background: #EF4444; color: #1F0707;
+}
+.err-title { font-size: 16px; font-weight: 800; color: #FEE2E2; line-height: 1.7; }
+.err-sub { font-size: 13px; color: #FCA5A5; line-height: 2; }
+
+.dz-card {
+    direction: rtl; border: 1px solid rgba(239, 68, 68, 0.45); border-radius: 16px; padding: 16px 18px;
+    background: rgba(239, 68, 68, 0.05); margin-bottom: 14px;
+}
+.dz-head { display: flex; align-items: flex-start; gap: 14px; }
+.dz-title { font-size: 17px; font-weight: 800; color: #FEE2E2; line-height: 1.7; }
+.dz-sub { font-size: 13px; color: #FCA5A5; line-height: 2; }
+.dz-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.dz-stat { background: #111A2E; border: 1px solid #1E293B; border-radius: 12px; padding: 10px 12px; text-align: center; }
+.dz-stat b { display: block; font-size: 22px; font-weight: 800; color: #F1F5F9; line-height: 1.5; }
+.dz-stat span { font-size: 12px; color: #94A3B8; }
+
+/* دکمه‌های حذف (کلید mgd_*): خط‌دور قرمز؛ دکمه‌های تأیید نهایی خطرناک (کلید mgx_*): قرمز توپر */
+[class*="st-key-mgd_"], [class*="st-key-mgd_"] > div, [class*="st-key-mgd_"] button { width: 100% !important; }
+[class*="st-key-mgd_"] button {
+    background: transparent !important; border: 1px solid #3F1D2B !important; color: #FCA5A5 !important;
+}
+[class*="st-key-mgd_"] button * { color: #FCA5A5 !important; }
+[class*="st-key-mgd_"] button:hover { background: rgba(239, 68, 68, 0.10) !important; }
+html body .stApp [data-testid="stMain"] [class*="st-key-mgx_"] button,
+html body .stApp [data-testid="stMain"] [class*="st-key-mgx_"] button[kind="primary"],
+html body .stApp [data-testid="stMain"] [class*="st-key-mgx_"] button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #EF4444, #B91C1C) !important; border: 0 !important;
+    color: #FFFFFF !important; font-weight: 700 !important;
+}
+html body .stApp [data-testid="stMain"] [class*="st-key-mgx_"] button * { color: #FFFFFF !important; }
+html body .stApp [data-testid="stMain"] [class*="st-key-mgx_"] button:disabled { opacity: 0.4 !important; }
 </style>
 """

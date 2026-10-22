@@ -1,30 +1,12 @@
 import streamlit as st
-import pandas as pd
-import time
-from datetime import datetime
 
-from db_manager import (
-    add_member, 
-    get_all_members, 
-    update_subscription, 
-    decrement_subscription,
-    clear_member_subscription,
-    delete_member, 
-    record_attendance,
-    get_attendance_logs,
-    reset_club_data
-)
-from ai_analytics import (
-    get_hourly_occupancy, 
-    predict_churn_risk, 
-    get_subscription_checkin_counts
-)
 from auth_ui import render_auth_page
 from ui_styles import FONT_STYLE
 from panel_ui import render_sidebar, render_dashboard
 from member_ui import render_add_member
 from checkin_ui import render_checkin
 from assign_ui import render_assign
+from manage_ui import render_manage
 from stats_ui import render_stats
 
 st.set_page_config(page_title="سامانه مدیریت هوشمند باشگاه", page_icon="🏋️", layout="wide")
@@ -225,120 +207,4 @@ else:
         render_stats(club_id)
 
     elif choice == "مدیریت و حذف":
-        raw_members = get_all_members(club_id)
-
-        st.subheader("👤 حذف دستی یک عضو مشخص")
-        search_term = st.text_input("🔍 جستجوی عضو جهت حذف (بر اساس نام، شماره تماس یا کد ملی):")
-
-        filtered_del = raw_members
-        if search_term.strip():
-            q = search_term.strip().lower()
-            filtered_del = [
-                m for m in raw_members
-                if q in str(m.get("name", "")).lower()
-                or q in str(m.get("phone", ""))
-                or q in str(m.get("national_id", ""))
-                or q in str(m.get("id", ""))
-            ]
-
-        if filtered_del:
-            del_options = {
-                f"کد: {m.get('id')} | {m.get('name')} | همراه: {m.get('phone')} | کد ملی: {m.get('national_id', 'نامشخص')}": m.get('id')
-                for m in filtered_del
-            }
-            selected_option = st.selectbox("عضو مورد نظر را برای حذف انتخاب کنید:", list(del_options.keys()))
-            selected_member_id = del_options[selected_option]
-
-            if st.button("❌ حذف کامل عضو"):
-                if delete_member(selected_member_id, club_id):
-                    st.success("عضو مورد نظر با موفقیت حذف گردید.")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("خطا در حذف عضو.")
-        else:
-            st.warning("هیچ عضوی با این مشخصات یافت نشد.")
-
-        st.markdown("---")
-        st.subheader("🗑 حذف اشتراک‌های اضافی (بدون حذف عضو)")
-
-        sub_search_term = st.text_input("🔍 جستجوی عضو جهت مدیریت/حذف اشتراک (نام، شماره تماس یا کد ملی):", key="sub_search_input")
-
-        filtered_sub = raw_members
-        if sub_search_term.strip():
-            q = sub_search_term.strip().lower()
-            filtered_sub = [
-                m for m in raw_members
-                if q in str(m.get("name", "")).lower()
-                or q in str(m.get("phone", ""))
-                or q in str(m.get("national_id", ""))
-                or q in str(m.get("id", ""))
-            ]
-
-        if filtered_sub:
-            sub_member_options = {
-                f"کد: {m.get('id')} | {m.get('name')} | همراه: {m.get('phone')}": m
-                for m in filtered_sub
-            }
-            selected_sub_label = st.selectbox("عضو مورد نظر را انتخاب کنید:", list(sub_member_options.keys()))
-            selected_sub_member = sub_member_options[selected_sub_label]
-            m_id = selected_sub_member.get('id')
-            sub_days = selected_sub_member.get('subscription_days', 0) or 0
-
-            if sub_days > 0:
-                package_desc = f"کد اشتراک: {m_id} | جلسات باقی‌مانده: {sub_days}"
-                st.selectbox("اشتراکی که قصد حذف آن را دارید انتخاب کنید:", [package_desc])
-
-                if st.button("❌ حذف این اشتراک"):
-                    if clear_member_subscription(m_id, club_id):
-                        st.success("اشتراک عضو با موفقیت صفر گردید.")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("خطا در صفر کردن اشتراک.")
-            else:
-                st.info("این عضو در حال حاضر هیچ اشتراک فعال یا ثبت‌شده‌ای ندارد.")
-        else:
-            st.warning("هیچ عضوی با این مشخصات یافت نشد.")
-
-        st.markdown("---")
-        st.subheader("⚠️ ریست کامل دیتابیس (حذف تمامی اعضا و داده‌ها)")
-        st.error("🚨 هشدار: این عملیات غیرقابل بازگشت است و تمام اعضا، اشتراک‌ها و ترددهای این باشگاه را کاملاً حذف می‌کند!")
-        
-        confirm_text = st.text_input("برای تایید، عبارت 'RESET' را به انگلیسی وارد کنید:")
-        
-        if st.button("🚨 تایید و شروع پاکسازی دیتابیس", type="primary"):
-            if confirm_text.strip() == "RESET":
-                st.session_state.reset_requested = True
-            else:
-                st.error("⚠️ برای تایید پاکسازی، باید دقیقاً عبارت RESET را به انگلیسی در کادر بالا وارد کنید.")
-
-        if st.session_state.get('reset_requested', False):
-            col_cancel, _ = st.columns([1, 2])
-            with col_cancel:
-                if st.button("❌ انصراف و لغو عملیات"):
-                    st.session_state.reset_requested = False
-                    st.info("عملیات پاکسازی با موفقیت لغو شد.")
-                    time.sleep(1)
-                    st.rerun()
-
-            progress_bar = st.progress(100)
-            status_text = st.empty()
-            
-            for i in range(5, 0, -1):
-                if not st.session_state.get('reset_requested', False):
-                    break
-                status_text.warning(f"⚠️ پاکسازی دیتابیس تا {i} ثانیه دیگر انجام می‌شود... در صورت پشیمانی دکمه انصراف را بزنید!")
-                progress_bar.progress(i * 20)
-                time.sleep(1)
-                
-            if st.session_state.get('reset_requested', False):
-                status_text.empty()
-                progress_bar.empty()
-                if reset_club_data(club_id):
-                    st.session_state.reset_requested = False
-                    st.success("🎉 تمامی داده‌های این باشگاه با موفقیت پاک شدند.")
-                    time.sleep(1.5)
-                    st.rerun()
-                else:
-                    st.error("خطا در ریست دیتابیس.")
+        render_manage(club_id)

@@ -312,6 +312,8 @@ def render_sidebar():
             st.session_state.pop("am_pending", None)
             for _key in ("ci_last", "ci_confirm", "ci_flash", "as_last", "as_member", "as_pkg", "as_flash"):   # وضعیت صفحه‌های ثبت ورود و تخصیص بسته
                 st.session_state.pop(_key, None)
+            for _key in [k for k in st.session_state.keys() if str(k).startswith("mg_")]:   # وضعیت صفحه مدیریت و حذف
+                st.session_state.pop(_key, None)
             st.rerun()
 
     st.sidebar.divider()

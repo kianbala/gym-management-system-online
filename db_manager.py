@@ -2,6 +2,7 @@ import psycopg2
 import pandas as pd
 import streamlit as st
 import sys
+import time
 from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
 from supabase import create_client, Client
@@ -88,6 +89,52 @@ def _duplicate_member_message(error):
     return "خطا: عضوی با این مشخصات قبلاً ثبت شده است!"
 
 
+# ---------------------------------------------------------------
+# آرشیو اعضا: تشخیص خودکار وجود ستون members.archived_at
+# اگر SQL مهاجرت هنوز اجرا نشده باشد، برنامه مثل قبل کار می‌کند (فقط قابلیت آرشیو غیرفعال است).
+# ---------------------------------------------------------------
+_ARCHIVE_STATE = {"ok": None, "checked_at": 0.0}
+_ARCHIVE_RECHECK_SECONDS = 30
+
+
+def archive_supported(force=False):
+    """
+    آیا ستون members.archived_at در دیتابیس وجود دارد؟
+    نتیجه مثبت برای همیشه (تا ری‌استارت برنامه) ذخیره می‌شود؛ نتیجه منفی فقط ۳۰ ثانیه،
+    تا بعد از اجرای SQL مهاجرت نیازی به ری‌استارت نباشد.
+    """
+    now = time.monotonic()
+    if _ARCHIVE_STATE["ok"] is True:
+        return True
+    if not force and _ARCHIVE_STATE["ok"] is False and now - _ARCHIVE_STATE["checked_at"] < _ARCHIVE_RECHECK_SECONDS:
+        return False
+    try:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'members' AND column_name = 'archived_at'
+            """)
+            ok = cursor.fetchone() is not None
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"Error in archive_supported: {e}")
+        return False
+    _ARCHIVE_STATE["ok"] = ok
+    _ARCHIVE_STATE["checked_at"] = now
+    return ok
+
+
+def _not_archived(alias="m"):
+    """قطعه SQL برای حذف اعضای آرشیوشده از نتایج (اگر آرشیو فعال نباشد، رشته خالی)"""
+    if not archive_supported():
+        return ""
+    prefix = f"{alias}." if alias else ""
+    return f" AND {prefix}archived_at IS NULL"
+
+
 def add_member(full_name, phone, national_id, club_id, subscription_days=0, first_name=None, last_name=None):
     """
     ثبت عضو جدید در دیتابیس.
@@ -111,14 +158,19 @@ def add_member(full_name, phone, national_id, club_id, subscription_days=0, firs
             first_name = parts[0]
             last_name = parts[1] if len(parts) > 1 else ''
 
-        cursor.execute("""
-            SELECT national_id, phone_number 
-            FROM public.members 
+        archived_col = ", archived_at" if archive_supported() else ""
+        cursor.execute(f"""
+            SELECT national_id, phone_number{archived_col}
+            FROM public.members
             WHERE (national_id = %s OR phone_number = %s) AND club_id = %s
         """, (national_id, phone, club_id))
 
-        existing = cursor.fetchone()
-        if existing:
+        found = cursor.fetchall()
+        if found:
+            live = [r for r in found if not (archived_col and r[2] is not None)]
+            if not live:
+                return False, "این عضو قبلاً ثبت و آرشیو شده است؛ از «مدیریت و حذف ← آرشیو» بازگردانی‌اش کنید."
+            existing = live[0]
             if national_id and existing[0] == national_id:
                 return False, "خطا: عضوی با این کد ملی قبلاً ثبت شده است!"
             return False, "خطا: عضوی با این شماره تماس قبلاً ثبت شده است!"
@@ -165,7 +217,7 @@ def get_all_members(club_id):
     """, (club_id,))
     conn.commit()
     
-    query = """
+    query = f"""
         SELECT 
             m.member_id,
             m.full_name,
@@ -183,7 +235,7 @@ def get_all_members(club_id):
             FROM public.subscriptions
             WHERE club_id = %s
         ) s ON m.member_id = s.member_id AND s.rn = 1
-        WHERE m.club_id = %s
+        WHERE m.club_id = %s{_not_archived()}
         ORDER BY m.member_id DESC
     """
     
@@ -220,7 +272,7 @@ def get_active_members(club_id):
     """, (club_id,))
     conn.commit()
     
-    query = """
+    query = f"""
         SELECT 
             m.member_id,
             m.full_name,
@@ -237,7 +289,7 @@ def get_active_members(club_id):
             FROM public.subscriptions
             WHERE club_id = %s AND status = 'ACTIVE' AND end_date >= CURRENT_DATE
         ) s ON m.member_id = s.member_id AND s.rn = 1
-        WHERE m.club_id = %s
+        WHERE m.club_id = %s{_not_archived()}
         ORDER BY m.member_id DESC
     """
     
@@ -347,19 +399,8 @@ def clear_member_subscription(member_id, club_id):
         return False
 
 def delete_member(member_id, club_id):
-    """حذف کامل عضو از سیستم"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute("DELETE FROM public.members WHERE member_id = %s AND club_id = %s", (member_id, club_id))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        print(f"Error in delete_member: {e}")
-        conn.close()
-        return False
+    """حذف دائمی یک عضو همراه با اشتراک‌ها و ترددهایش (در یک تراکنش). فقط برای سازگاری با کد قبلی؛ نسخه کامل: delete_members_permanently"""
+    return bool(delete_members_permanently([member_id], club_id).get("ok"))
 
 def record_attendance(member_id, club_id):
     """ثبت تردد کاربر در جدول checkins بر اساس تایم‌زون دقیق ایران"""
@@ -602,7 +643,7 @@ def assign_package(member_id, club_id, sessions, validity_days=30):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT member_id FROM public.members WHERE member_id = %s AND club_id = %s FOR UPDATE",
+            "SELECT member_id FROM public.members WHERE member_id = %s AND club_id = %s" + _not_archived("") + " FOR UPDATE",
             (member_id, club_id),
         )
         if not cursor.fetchone():
@@ -798,3 +839,328 @@ def reset_club_data(club_id):
         print(f"Error in reset_club_data: {e}")
         conn.close()
         return False
+
+
+# ---------------------------------------------------------------
+# مدیریت و حذف: آرشیو، حذف دائمی، ابطال اشتراک، پشتیبان‌گیری
+# همه عملیات تغییردهنده «اتمیک» هستند و همیشه با club_id محدود می‌شوند.
+# ---------------------------------------------------------------
+def _clean_ids(member_ids):
+    """فهرست شناسه‌ها را به اعداد صحیح یکتا تبدیل می‌کند (مقادیر نامعتبر نادیده گرفته می‌شوند)"""
+    ids = set()
+    for value in member_ids or []:
+        try:
+            ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return sorted(ids)
+
+
+def get_members_impact(member_ids, club_id):
+    """تعداد اشتراک‌ها و ترددهایی که همراه این اعضا حذف می‌شوند: {subscriptions, checkins}"""
+    ids = _clean_ids(member_ids)
+    if not ids:
+        return {"subscriptions": 0, "checkins": 0}
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM public.subscriptions WHERE member_id = ANY(%s) AND club_id = %s", (ids, club_id))
+        subscriptions = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT COUNT(*) FROM public.checkins WHERE member_id = ANY(%s) AND club_id = %s", (ids, club_id))
+        checkins = cursor.fetchone()[0]
+        return {"subscriptions": int(subscriptions), "checkins": int(checkins)}
+    finally:
+        conn.close()
+
+
+def archive_members(member_ids, club_id):
+    """
+    آرشیو اعضا: از فهرست‌ها و آمار فعال کنار می‌روند ولی اشتراک‌ها و ترددهایشان حفظ می‌شود (قابل بازگردانی).
+    خروجی: {"ok": True, "count"} یا {"ok": False, "code", "message"}
+    """
+    ids = _clean_ids(member_ids)
+    if not ids:
+        return _fail("EMPTY", "عضوی انتخاب نشده است.")
+    if not archive_supported():
+        return _fail("NO_ARCHIVE", "قابلیت آرشیو هنوز در دیتابیس فعال نشده است. فایل SQL مهاجرت را یک‌بار اجرا کنید.")
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE public.members SET archived_at = now()
+            WHERE member_id = ANY(%s) AND club_id = %s AND archived_at IS NULL
+        """, (ids, club_id))
+        count = cursor.rowcount
+        conn.commit()
+        if count == 0:
+            return _fail("NOT_FOUND", "عضو پیدا نشد یا قبلاً آرشیو شده است.")
+        return {"ok": True, "count": count}
+    except Exception as e:
+        print(f"Error in archive_members: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در آرشیو عضو. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def restore_members(member_ids, club_id):
+    """بازگردانی اعضای آرشیوشده به فهرست‌ها. خروجی: {"ok": True, "count"} یا {"ok": False, ...}"""
+    ids = _clean_ids(member_ids)
+    if not ids:
+        return _fail("EMPTY", "عضوی انتخاب نشده است.")
+    if not archive_supported():
+        return _fail("NO_ARCHIVE", "قابلیت آرشیو هنوز در دیتابیس فعال نشده است.")
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE public.members SET archived_at = NULL
+            WHERE member_id = ANY(%s) AND club_id = %s AND archived_at IS NOT NULL
+        """, (ids, club_id))
+        count = cursor.rowcount
+        conn.commit()
+        if count == 0:
+            return _fail("NOT_FOUND", "عضو در آرشیو پیدا نشد (شاید قبلاً بازگردانده شده است).")
+        return {"ok": True, "count": count}
+    except Exception as e:
+        print(f"Error in restore_members: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در بازگردانی عضو. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def delete_members_permanently(member_ids, club_id):
+    """
+    حذف دائمی اعضا همراه با ترددها، اشتراک‌ها و سوابق تحلیلی‌شان، همه در «یک تراکنش»
+    (یا همه پاک می‌شود یا هیچ‌چیز؛ نیازی به ON DELETE CASCADE در دیتابیس نیست).
+    خروجی: {"ok": True, "members", "subscriptions", "checkins"} یا {"ok": False, "code", "message"}
+    """
+    ids = _clean_ids(member_ids)
+    if not ids:
+        return _fail("EMPTY", "عضوی انتخاب نشده است.")
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT member_id FROM public.members WHERE member_id = ANY(%s) AND club_id = %s FOR UPDATE",
+            (ids, club_id))
+        found = [r[0] for r in cursor.fetchall()]
+        if not found:
+            conn.rollback()
+            return _fail("NOT_FOUND", "عضو پیدا نشد (شاید قبلاً حذف شده است).")
+
+        cursor.execute("""
+            DELETE FROM public.checkins
+            WHERE club_id = %s
+              AND (member_id = ANY(%s)
+                   OR subscription_id IN (
+                       SELECT subscription_id FROM public.subscriptions WHERE member_id = ANY(%s) AND club_id = %s))
+        """, (club_id, found, found, club_id))
+        checkins_deleted = cursor.rowcount
+
+        cursor.execute("DELETE FROM public.ai_analytics WHERE member_id = ANY(%s) AND club_id = %s", (found, club_id))
+
+        cursor.execute("DELETE FROM public.subscriptions WHERE member_id = ANY(%s) AND club_id = %s", (found, club_id))
+        subscriptions_deleted = cursor.rowcount
+
+        cursor.execute("DELETE FROM public.members WHERE member_id = ANY(%s) AND club_id = %s", (found, club_id))
+        members_deleted = cursor.rowcount
+
+        conn.commit()
+        return {"ok": True, "members": members_deleted, "subscriptions": subscriptions_deleted,
+                "checkins": checkins_deleted}
+    except Exception as e:
+        print(f"Error in delete_members_permanently: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در حذف عضو؛ هیچ داده‌ای پاک نشد. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def cancel_subscription(member_id, club_id):
+    """
+    ابطال اشتراک فعال عضو: جلسات باقی‌مانده صفر و وضعیت EXPIRED می‌شود (ترددهای قبلی دست‌نخورده می‌ماند).
+    مقدار قبلی برگردانده می‌شود تا بشود ابطال را لغو کرد (restore_subscription).
+    خروجی: {"ok": True, "cancelled": [{"subscription_id", "remaining"}], "burned"} یا {"ok": False, ...}
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT subscription_id, remaining_sessions
+            FROM public.subscriptions
+            WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE'
+            ORDER BY subscription_id DESC
+            FOR UPDATE
+        """, (member_id, club_id))
+        rows = cursor.fetchall()
+        if not rows:
+            conn.rollback()
+            return _fail("NO_ACTIVE", "این عضو اشتراک فعالی ندارد.")
+
+        cancelled = [{"subscription_id": r[0], "remaining": int(r[1] or 0)} for r in rows]
+        cursor.execute("""
+            UPDATE public.subscriptions
+            SET remaining_sessions = 0, status = 'EXPIRED'
+            WHERE subscription_id = ANY(%s) AND club_id = %s
+        """, ([c["subscription_id"] for c in cancelled], club_id))
+        conn.commit()
+        return {"ok": True, "cancelled": cancelled, "burned": sum(c["remaining"] for c in cancelled)}
+    except Exception as e:
+        print(f"Error in cancel_subscription: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در ابطال اشتراک. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def restore_subscription(items, club_id):
+    """
+    لغو ابطال اشتراک: اشتراک‌های ابطال‌شده با همان تعداد جلسه قبلی دوباره فعال می‌شوند (در یک تراکنش).
+    items: [{"subscription_id", "remaining"}] (خروجی cancel_subscription)
+    اگر اشتراک تاریخ‌گذشته شده یا بعد از آن اشتراک جدیدی برای عضو ثبت شده باشد، بازگردانی انجام نمی‌شود.
+    """
+    if not items:
+        return _fail("EMPTY", "اشتراکی برای بازگردانی نیست.")
+    try:
+        parsed = [(int(i["subscription_id"]), int(i["remaining"])) for i in items]
+    except (KeyError, TypeError, ValueError):
+        return _fail("EMPTY", "اطلاعات اشتراک نامعتبر است.")
+    all_ids = [sid for sid, _ in parsed]
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        for sid, remaining in parsed:
+            cursor.execute("""
+                SELECT member_id, status, (end_date < CURRENT_DATE) AS is_past
+                FROM public.subscriptions
+                WHERE subscription_id = %s AND club_id = %s
+                FOR UPDATE
+            """, (sid, club_id))
+            row = cursor.fetchone()
+            if not row:
+                conn.rollback()
+                return _fail("NOT_FOUND", "این اشتراک پیدا نشد.")
+            member_id, status, is_past = row
+            if status == "ACTIVE":
+                conn.rollback()
+                return _fail("ALREADY", "این اشتراک قبلاً دوباره فعال شده است.")
+            if is_past:
+                conn.rollback()
+                return _fail("PAST", "مهلت اعتبار این اشتراک تمام شده است؛ بازگرداندن ممکن نیست.")
+
+            cursor.execute("""
+                SELECT 1 FROM public.subscriptions
+                WHERE member_id = %s AND club_id = %s AND subscription_id > %s AND NOT (subscription_id = ANY(%s))
+                LIMIT 1
+            """, (member_id, club_id, sid, all_ids))
+            if cursor.fetchone():
+                conn.rollback()
+                return _fail("NEWER", "بعد از این اشتراک، اشتراک جدیدی برای عضو ثبت شده است؛ بازگرداندن ممکن نیست.")
+
+            cursor.execute("""
+                UPDATE public.subscriptions SET remaining_sessions = %s, status = 'ACTIVE'
+                WHERE subscription_id = %s AND club_id = %s
+            """, (remaining, sid, club_id))
+
+        conn.commit()
+        return {"ok": True, "remaining": sum(r for _, r in parsed)}
+    except Exception as e:
+        print(f"Error in restore_subscription: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return _fail("ERROR", "خطا در بازگردانی اشتراک. چند لحظه بعد دوباره تلاش کنید.")
+    finally:
+        conn.close()
+
+
+def get_archived_members(club_id):
+    """
+    اعضای آرشیوشده (جدیدترین آرشیو اول) همراه با تعداد اشتراک‌ها و ترددهای حفظ‌شده:
+    [{id, name, national_id, phone, join_date, archived_at, subscriptions, checkins}]
+    اگر قابلیت آرشیو فعال نباشد، فهرست خالی برمی‌گردد.
+    """
+    if not archive_supported():
+        return []
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT m.member_id, m.full_name, m.national_id, m.phone_number, m.join_date, m.archived_at,
+                   (SELECT COUNT(*) FROM public.subscriptions s WHERE s.member_id = m.member_id) AS subs,
+                   (SELECT COUNT(*) FROM public.checkins c WHERE c.member_id = m.member_id) AS checks
+            FROM public.members m
+            WHERE m.club_id = %s AND m.archived_at IS NOT NULL
+            ORDER BY m.archived_at DESC, m.member_id DESC
+        """, (club_id,))
+        return [{
+            "id": r[0],
+            "name": r[1] or "",
+            "national_id": r[2] or "",
+            "phone": r[3] or "",
+            "join_date": r[4].isoformat() if hasattr(r[4], "isoformat") else (str(r[4]) if r[4] else None),
+            "archived_at": r[5],
+            "subscriptions": int(r[6]),
+            "checkins": int(r[7]),
+        } for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_club_counts(club_id):
+    """تعداد کل داده‌های باشگاه (شامل اعضای آرشیوشده): {members, subscriptions, checkins, analytics}"""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM public.members WHERE club_id = %s),
+                (SELECT COUNT(*) FROM public.subscriptions WHERE club_id = %s),
+                (SELECT COUNT(*) FROM public.checkins WHERE club_id = %s),
+                (SELECT COUNT(*) FROM public.ai_analytics WHERE club_id = %s)
+        """, (club_id, club_id, club_id, club_id))
+        r = cursor.fetchone()
+        return {"members": int(r[0]), "subscriptions": int(r[1]), "checkins": int(r[2]), "analytics": int(r[3])}
+    finally:
+        conn.close()
+
+
+_BACKUP_QUERIES = {
+    "members": "SELECT * FROM public.members WHERE club_id = %s ORDER BY member_id",
+    "subscriptions": "SELECT * FROM public.subscriptions WHERE club_id = %s ORDER BY subscription_id",
+    "checkins": "SELECT * FROM public.checkins WHERE club_id = %s ORDER BY checkin_id",
+    "ai_analytics": "SELECT * FROM public.ai_analytics WHERE club_id = %s ORDER BY analytics_id",
+}
+
+
+def export_club_backup(club_id):
+    """داده‌های خام باشگاه برای نسخه پشتیبان: {نام جدول: (ستون‌ها, ردیف‌ها)}. رمز عبور کاربران شامل نمی‌شود."""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        tables = {}
+        for name, query in _BACKUP_QUERIES.items():
+            cursor.execute(query, (club_id,))
+            columns = [d[0] for d in cursor.description]
+            tables[name] = (columns, cursor.fetchall())
+        return tables
+    finally:
+        conn.close()
