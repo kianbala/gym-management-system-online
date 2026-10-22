@@ -371,12 +371,13 @@ a.act-wa { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129
     .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* --- صفحه مدیریت و حذف: کارت عضو، کارت خطا، منطقه خطر، دکمه‌های قرمز --- */
-.mg-card {
-    display: flex; align-items: flex-start; gap: 12px; direction: rtl;
-    background: #111A2E; border: 1px solid #1E293B; border-radius: 14px; padding: 14px 16px;
+/* --- صفحه مدیریت و حذف: قاب عضو، کارت خطا، کارت پاکسازی کامل، دکمه‌های قرمز --- */
+.mg-card { display: flex; align-items: flex-start; gap: 12px; direction: rtl; }
+/* قاب هر عضو (key = mgc_*): کارت اطلاعات، دکمه‌ها و کارت تأیید همان عضو داخل یک کادرند */
+[class*="st-key-mgc_"] {
+    background: #111A2E; border: 1px solid #1E293B; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 6px; gap: 0.7rem;
 }
-.mg-card-off { background: #0E1626; }
 .mg-main { flex: 1; min-width: 0; }
 .mg-name { font-size: 16px; font-weight: 800; color: #F1F5F9; line-height: 1.7; word-break: break-word; }
 .mg-meta { font-size: 12.5px; color: #64748B; line-height: 1.9; }

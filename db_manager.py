@@ -1,7 +1,9 @@
 import psycopg2
 import pandas as pd
 import streamlit as st
+import re
 import sys
+import threading
 import time
 from datetime import datetime, date, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -40,24 +42,213 @@ except Exception as e:
     print(f"Error initializing Supabase client: {e}")
     supabase = None
 
-# --- ۲. اتصال مستقیم PostgreSQL ---
-def get_connection():
-    db_config = st.secrets.get("postgres", {
+# --- ۲. اتصال مستقیم PostgreSQL (با استخر اتصال) ---
+#
+# چرا استخر؟ ساختن یک اتصال تازه به Supabase (TCP + TLS + احراز هویت) معمولاً چند صد میلی‌ثانیه تا بیش از یک ثانیه
+# طول می‌کشد و هر کلیک در برنامه ۳ تا ۴ query می‌زند. قبلاً برای هر query یک اتصال تازه ساخته می‌شد (مجموعاً چند ثانیه).
+# حالا اتصال‌های آزاد نگه داشته و دوباره استفاده می‌شوند؛ بقیه کد دست‌نخورده است: همچنان
+# conn = get_connection() ... conn.close() می‌نویسند، فقط close() اتصال را «به استخر برمی‌گرداند».
+#
+# ایمنی:
+#  - هر اتصال فقط در اختیار یک تابع است (استخر فقط اتصال‌های «آزاد» را نگه می‌دارد، نه اشتراکی)
+#  - موقع برگرداندن، تراکنش نیمه‌کاره rollback می‌شود
+#  - اتصالی که مدتی بی‌استفاده بوده قبل از استفاده با یک SELECT 1 سنجیده می‌شود و در صورت مرده‌بودن دور ریخته می‌شود
+#  - اگر تابعی conn.close() را فراموش کند، هنگام آزادشدن شیء اتصال دور ریخته می‌شود (نشتی ایجاد نمی‌شود)
+def _db_config():
+    return st.secrets.get("postgres", {
         "host": st.secrets.get("DB_HOST", "db.xxxxxxxx.supabase.co"),
         "database": st.secrets.get("DB_NAME", "postgres"),
         "user": st.secrets.get("DB_USER", "postgres"),
         "password": st.secrets.get("DB_PASSWORD", ""),
         "port": int(st.secrets.get("DB_PORT", 5432))
     })
-    
+
+
+def _new_raw_connection():
+    """ساخت یک اتصال تازه (کند). keepalive از قطع‌شدن بی‌صدای اتصال‌های آزاد جلوگیری می‌کند."""
+    db_config = _db_config()
     return psycopg2.connect(
         host=db_config["host"],
         database=db_config["database"],
         user=db_config["user"],
         password=db_config["password"],
         port=db_config["port"],
-        sslmode="require"
+        sslmode="require",
+        connect_timeout=10,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=3,
     )
+
+
+class _PooledConnection:
+    """اتصال قرضی از استخر: مثل اتصال psycopg2 رفتار می‌کند، فقط close() آن را به استخر برمی‌گرداند"""
+
+    def __init__(self, raw, pool):
+        self._raw = raw
+        self._pool = pool
+        self._released = False
+
+    def cursor(self, *args, **kwargs):
+        return self._raw.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._raw.commit()
+
+    def rollback(self):
+        return self._raw.rollback()
+
+    def close(self):
+        self._pool.release(self)
+
+    @property
+    def autocommit(self):
+        return self._raw.autocommit
+
+    @autocommit.setter
+    def autocommit(self, value):
+        self._raw.autocommit = value
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._raw, name)
+
+    def __del__(self):
+        try:
+            if not self._released:
+                self._pool.release(self, discard=True)
+        except Exception:
+            pass
+
+
+class _ConnectionPool:
+    """استخر ساده و thread-safe از اتصال‌های آزاد (برای اتصال‌های در حال استفاده سقف نمی‌گذارد)"""
+
+    def __init__(self, connect, max_idle=4, stale_after=25.0):
+        self._connect = connect
+        self._max_idle = max_idle
+        self._stale_after = stale_after
+        self._idle = []                     # [(raw, آخرین زمان استفاده)]
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _close_quietly(raw):
+        try:
+            raw.close()
+        except Exception:
+            pass
+
+    def _is_usable(self, raw, last_used):
+        try:
+            if raw.closed:
+                return False
+            if time.monotonic() - last_used > self._stale_after:    # مدتی بی‌استفاده: قبل از استفاده بسنج
+                cursor = raw.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+                raw.rollback()
+            return True
+        except Exception:
+            return False
+
+    def acquire(self):
+        while True:
+            with self._lock:
+                item = self._idle.pop() if self._idle else None          # آخرین استفاده‌شده اول (گرم‌ترین اتصال)
+            if item is None:
+                break
+            raw, last_used = item
+            if self._is_usable(raw, last_used):
+                return _PooledConnection(raw, self)
+            self._close_quietly(raw)
+        return _PooledConnection(self._connect(), self)
+
+    def release(self, wrapper, discard=False):
+        if wrapper._released:
+            return
+        wrapper._released = True
+        raw = wrapper._raw
+        if discard:
+            self._close_quietly(raw)
+            return
+        try:
+            if raw.closed:
+                return
+            raw.rollback()                                               # تراکنش نیمه‌کاره پاک شود
+        except Exception:
+            self._close_quietly(raw)
+            return
+        with self._lock:
+            if len(self._idle) < self._max_idle:
+                self._idle.append((raw, time.monotonic()))
+                return
+        self._close_quietly(raw)
+
+    def idle_count(self):
+        with self._lock:
+            return len(self._idle)
+
+
+_POOL = _ConnectionPool(_new_raw_connection)
+
+
+def get_connection():
+    """یک اتصال از استخر می‌دهد (اگر آزاد نبود، اتصال تازه می‌سازد). مثل قبل با conn.close() برگردانده می‌شود."""
+    return _POOL.acquire()
+
+
+def describe_endpoint(host, port):
+    """
+    نوع اتصال را از روی آدرس و پورت تشخیص می‌دهد (بدون نمایش آدرس یا نام پروژه):
+    {"kind": "pooler"|"direct"|"other", "mode": توضیح فارسی, "region": منطقه سرور Supabase یا None}
+    """
+    host, port = str(host or ""), int(port or 0)
+    if ".pooler.supabase.com" in host:
+        m = re.search(r"aws-\d+-([a-z0-9-]+)\.pooler\.supabase\.com", host)
+        mode = {6543: "Transaction pooler (پورت ۶۵۴۳)", 5432: "Session pooler (پورت ۵۴۳۲)"}.get(port, f"Pooler (پورت {port})")
+        return {"kind": "pooler", "mode": mode, "region": m.group(1) if m else None}
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        return {"kind": "direct", "mode": f"اتصال مستقیم (پورت {port})", "region": None}
+    return {"kind": "other", "mode": f"سرور دیگر (پورت {port})", "region": None}
+
+
+def measure_db_speed(samples=3):
+    """
+    اندازه‌گیری سرعت دیتابیس برای عیب‌یابی (میلی‌ثانیه):
+      new_connection_ms : ساخت یک اتصال تازه (همان چیزی که قبلاً برای هر query پرداخت می‌شد)
+      roundtrip_ms      : رفت‌وبرگشت یک query ساده روی اتصال آماده (هزینه واقعی هر query)
+      pool_checkout_ms  : گرفتن اتصال از استخر (باید نزدیک صفر باشد)
+    """
+    config = _db_config()
+    info = describe_endpoint(config.get("host"), config.get("port"))
+
+    started = time.perf_counter()
+    raw = _new_raw_connection()
+    new_ms = (time.perf_counter() - started) * 1000
+    try:
+        cursor = raw.cursor()
+        times = []
+        for _ in range(samples):
+            started = time.perf_counter()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            times.append((time.perf_counter() - started) * 1000)
+        raw.rollback()
+    finally:
+        raw.close()
+
+    warm = get_connection()          # اگر استخر خالی باشد همین‌جا ساخته می‌شود؛ بعد از اولین بار آماده است
+    warm.close()
+    started = time.perf_counter()
+    conn = get_connection()
+    conn.close()
+    checkout_ms = (time.perf_counter() - started) * 1000
+
+    return {**info, "new_connection_ms": new_ms, "roundtrip_ms": sorted(times)[len(times) // 2],
+            "pool_checkout_ms": checkout_ms}
+
 
 # --- ۳. توابع اصلی مدیریت اعضا و دیتابیس ---
 

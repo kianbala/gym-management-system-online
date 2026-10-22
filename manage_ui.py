@@ -5,10 +5,12 @@
   ۱. اعضا        : جستجو + کارت عضو با سه عمل: «ابطال اشتراک»، «آرشیو»، «حذف دائمی»
                     فیلتر «غیرفعال» برای پاکسازی گروهی (آرشیو همه یک‌جا)
   ۲. آرشیو       : اعضای آرشیوشده؛ «بازگردانی» یا «حذف دائمی»
-  ۳. منطقه خطر   : ریست کامل باشگاه، با نسخه پشتیبان (ZIP) و تایپ عبارت RESET
+  ۳. پاکسازی کامل: پاک‌کردن همه داده‌های باشگاه، با نسخه پشتیبان (ZIP) و تایپ عبارت RESET
 
 اصول:
-- هر عمل تخریبی اول یک کارت تأیید همان‌جا زیر کارت عضو نشان می‌دهد که دقیقاً چه چیزی از بین می‌رود.
+- هر عضو یک «قاب» دارد که کارت اطلاعات، دکمه‌های همان عضو و کارت تأیید را با هم نگه می‌دارد؛ پس همیشه معلوم است
+  دکمه مال کدام عضو است.
+- هر عمل تخریبی اول یک کارت تأیید همان‌جا داخل قاب عضو نشان می‌دهد که دقیقاً چه چیزی از بین می‌رود.
 - «آرشیو» عضو را از فهرست‌ها و آمار فعال کنار می‌گذارد ولی اشتراک‌ها و ترددهایش (و آمار ساعات شلوغی) حفظ می‌شود.
 - ابطال اشتراک و آرشیو، تا وقتی کارت نتیجه روی صفحه است، با یک کلیک قابل برگشت‌اند.
 - اگر ستون members.archived_at در دیتابیس نباشد (SQL مهاجرت اجرا نشده)، صفحه کار می‌کند و فقط آرشیو غیرفعال است.
@@ -27,7 +29,7 @@ from ai_analytics import get_subscription_checkin_counts
 from checkin_ui import UNDO_WINDOW_MINUTES, _columns, is_undoable, last_visit_text, logs_from_last, to_tehran
 from db_manager import (archive_members, archive_supported, cancel_subscription, delete_members_permanently,
                         export_club_backup, get_all_members, get_archived_members, get_club_counts,
-                        get_last_checkins, get_members_impact, reset_club_data, restore_members,
+                        get_last_checkins, get_members_impact, measure_db_speed, reset_club_data, restore_members,
                         restore_subscription)
 from member_ui import _button, _warn_card
 from panel_ui import (TEHRAN, _html, _parse_date, build_rows, fa, filter_rows, jalali_text, normalize_text,
@@ -35,7 +37,7 @@ from panel_ui import (TEHRAN, _html, _parse_date, build_rows, fa, filter_rows, j
 
 PAGE_SIZE = 8            # تعداد کارت‌های نمایش‌داده‌شده در هر بار
 INACTIVE_DAYS = 60       # «غیرفعال» = بدون اشتراک فعال و بدون تردد حداقل این تعداد روز
-RESET_PHRASE = "RESET"   # عبارت تأیید ریست کامل
+RESET_PHRASE = "RESET"   # عبارت تأیید پاکسازی کامل
 
 SECTION_KEYS = ["members", "archive", "danger"]
 
@@ -156,14 +158,33 @@ def pending_view(p):
 def backup_zip(tables):
     """
     tables: {نام جدول: (ستون‌ها, ردیف‌ها)} ← بایت‌های یک فایل ZIP شامل یک CSV برای هر جدول
-    (UTF-8 همراه BOM تا Excel حروف فارسی را درست نشان دهد)
+    (UTF-8 همراه BOM تا Excel حروف فارسی را درست نشان دهد). جدول‌های خالی در فایل نمی‌آیند.
     """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, (columns, rows) in tables.items():
+            if not rows:
+                continue
             frame = pd.DataFrame(rows, columns=columns)
             zf.writestr(f"{name}.csv", ("\ufeff" + frame.to_csv(index=False)).encode("utf-8"))
     return buf.getvalue()
+
+
+def speed_verdict(result):
+    """
+    نتیجه measure_db_speed را به یک جمله فارسی ساده تبدیل می‌کند: (سطح: ok|warn, متن)
+    هر کلیک در برنامه حدود ۴ query می‌زند؛ پس زمان تقریبی صفحه ≈ ۴ × زمان رفت‌وبرگشت.
+    """
+    rt, nc = result["roundtrip_ms"], result["new_connection_ms"]
+    page = rt * 4 / 1000
+    if rt >= 250:
+        return "warn", (f"هر query حدود {fa(round(rt))} میلی‌ثانیه طول می‌کشد (حدود {fa(round(page, 1))} ثانیه برای هر کلیک). "
+                        "یعنی فاصله سرور برنامه تا دیتابیس زیاد است؛ منطقه (Region) پروژه Supabase را بررسی کنید.")
+    if nc >= 700:
+        return "ok", (f"ساخت اتصال تازه {fa(round(nc))} میلی‌ثانیه طول می‌کشد، ولی هر query روی اتصال آماده فقط "
+                      f"{fa(round(rt))} میلی‌ثانیه است. استخر اتصال دقیقاً همین هزینه را حذف می‌کند؛ هر کلیک باید زیر "
+                      f"{fa(max(1, round(page + 0.5)))} ثانیه باشد.")
+    return "ok", f"اتصال سالم است: هر query حدود {fa(round(rt))} میلی‌ثانیه."
 
 
 # =============================================================
@@ -222,7 +243,7 @@ def archived_card_html(item):
     if item.get("archived_at") is not None:
         when = f'آرشیو شده در {jalali_text(to_tehran(item["archived_at"]).date())}'
     return _html(
-        '<div class="mg-card mg-card-off">', _avatar(item["name"]), '<div class="mg-main">',
+        '<div class="mg-card">', _avatar(item["name"]), '<div class="mg-main">',
         f'<div class="mg-name">{name}</div>',
         f'<div class="mg-meta">{meta}</div>',
         f'<div class="mg-meta">{when}</div>' if when else "",
@@ -251,7 +272,7 @@ def dz_card_html(counts, archived_count):
     )
     return _html(
         '<div class="dz-card"><div class="dz-head"><div class="err-icon">!</div><div>',
-        '<div class="dz-title">ریست کامل اطلاعات باشگاه</div>',
+        '<div class="dz-title">پاکسازی کامل اطلاعات باشگاه</div>',
         '<div class="dz-sub">همه اعضا (از جمله آرشیو)، اشتراک‌ها و ترددهای این باشگاه برای همیشه پاک می‌شود و قابل بازگشت نیست. '
         "حساب کاربری شما باقی می‌ماند.</div></div></div>",
         f'<div class="dz-stats">{stats}</div></div>',
@@ -376,6 +397,17 @@ def _render_pending(club_id, p):
             st.rerun()
 
 
+def _row_box(key):
+    """
+    قابِ یک عضو: کارت اطلاعات + دکمه‌های همان عضو + کارت تأیید، همه داخل یک کادر.
+    اگر نسخه Streamlit پارامتر key را نشناسد، کادر پیش‌فرض (border=True) استفاده می‌شود.
+    """
+    try:
+        return st.container(key=key)
+    except TypeError:
+        return st.container(border=True)
+
+
 def _page_limit(section, signature):
     """تعداد کارت‌های قابل‌نمایش؛ با عوض‌شدن جستجو یا فیلتر به حالت اول برمی‌گردد"""
     if st.session_state.get(f"mg_sig_{section}") != signature:
@@ -453,18 +485,20 @@ def _render_members(club_id, today, supported):
             _render_pending(club_id, pending)
 
     for r in visible:
-        c_info, c_act = _columns([4, 1.6])
-        with c_info:
+        with _row_box(f"mgc_{r['id']}"):
             st.markdown(member_card_html(r), unsafe_allow_html=True)
-        with c_act:
-            if r["status_key"] == "active" and _button("ابطال اشتراک", key=f"mg_cancel_{r['id']}", type_="secondary"):
-                _ask(club_id, "cancel_sub", [r], "members", {"sessions_left": r["sessions_left"] or 0})
-            if supported and _button("آرشیو", key=f"mg_arch_{r['id']}", type_="primary"):
-                _ask(club_id, "archive", [r], "members")
-            if _button("حذف دائمی", key=f"mgd_del_{r['id']}", type_="secondary"):
-                _ask(club_id, "delete", [r], "members")
-        if pending and pending["kind"] != "bulk_archive" and pending["ids"] == [r["id"]]:
-            _render_pending(club_id, pending)
+            b_cancel, b_archive, b_delete, _spacer = _columns([1, 1, 1, 1.6])      # ترتیب از راست: ابطال، آرشیو، حذف
+            with b_cancel:
+                if r["status_key"] == "active" and _button("ابطال اشتراک", key=f"mg_cancel_{r['id']}", type_="secondary"):
+                    _ask(club_id, "cancel_sub", [r], "members", {"sessions_left": r["sessions_left"] or 0})
+            with b_archive:
+                if supported and _button("آرشیو", key=f"mg_arch_{r['id']}", type_="primary"):
+                    _ask(club_id, "archive", [r], "members")
+            with b_delete:
+                if _button("حذف دائمی", key=f"mgd_del_{r['id']}", type_="secondary"):
+                    _ask(club_id, "delete", [r], "members")
+            if pending and pending["kind"] != "bulk_archive" and pending["ids"] == [r["id"]]:
+                _render_pending(club_id, pending)
 
     _more_button("members", len(visible), len(results), limit)
 
@@ -504,27 +538,28 @@ def _render_archive(club_id, archived, supported):
         return
 
     for item in visible:
-        c_info, c_act = _columns([4, 1.6])
-        with c_info:
+        with _row_box(f"mgc_a{item['id']}"):
             st.markdown(archived_card_html(item), unsafe_allow_html=True)
-        with c_act:
-            if _button("بازگردانی", key=f"mg_restore_{item['id']}", type_="primary"):
-                res = restore_members([item["id"]], club_id)
-                if res["ok"]:
-                    _set_last(True, f"«{item['name']}» برگشت", "به فهرست اعضا اضافه شد.")
-                else:
-                    _set_last(False, "بازگردانی انجام نشد", res["message"])
-                st.rerun()
-            if _button("حذف دائمی", key=f"mgd_adel_{item['id']}", type_="secondary"):
-                _ask(club_id, "delete", [item], "archive")
-        if pending and pending["ids"] == [item["id"]]:
-            _render_pending(club_id, pending)
+            b_restore, b_delete, _spacer = _columns([1, 1, 2.6])
+            with b_restore:
+                if _button("بازگردانی", key=f"mg_restore_{item['id']}", type_="primary"):
+                    res = restore_members([item["id"]], club_id)
+                    if res["ok"]:
+                        _set_last(True, f"«{item['name']}» برگشت", "به فهرست اعضا اضافه شد.")
+                    else:
+                        _set_last(False, "بازگردانی انجام نشد", res["message"])
+                    st.rerun()
+            with b_delete:
+                if _button("حذف دائمی", key=f"mgd_adel_{item['id']}", type_="secondary"):
+                    _ask(club_id, "delete", [item], "archive")
+            if pending and pending["ids"] == [item["id"]]:
+                _render_pending(club_id, pending)
 
     _more_button("archive", len(visible), len(results), limit)
 
 
 # =============================================================
-# بخش ۳: منطقه خطر
+# بخش ۳: پاکسازی کامل
 # =============================================================
 def _get_backup(club_id, counts, today):
     """نسخه پشتیبان فقط وقتی دوباره ساخته می‌شود که تعداد داده‌ها عوض شده باشد (تایپ در کادر تأیید پرس‌وجوی تازه نمی‌زند)"""
@@ -537,7 +572,7 @@ def _get_backup(club_id, counts, today):
     return cached
 
 
-def _render_danger(club_id, archived_count, today, now):
+def _render_cleanup(club_id, archived_count, today, now):
     counts = get_club_counts(club_id)
     st.markdown(dz_card_html(counts, archived_count), unsafe_allow_html=True)
 
@@ -549,7 +584,9 @@ def _render_danger(club_id, archived_count, today, now):
     backup = _get_backup(club_id, counts, today)
     st.download_button("دانلود نسخه پشتیبان (ZIP)", data=backup["data"], file_name=backup["name"],
                        mime="application/zip", key="mg_download")
-    st.caption("شامل فایل‌های CSV اعضا، اشتراک‌ها و ترددها است و با Excel باز می‌شود. رمز عبور در آن نیست.")
+    st.caption("شامل فایل‌های CSV اعضا، اشتراک‌ها و ترددها است (جدول‌های خالی نمی‌آیند) و با Excel باز می‌شود. "
+               "رمز عبور در آن نیست. اگر Excel صفر ابتدای شماره‌ها را نشان نداد، فایل سالم است؛ آن را با Data ← From Text/CSV "
+               "باز کنید و ستون را Text بگذارید.")
 
     st.markdown(f'<div class="as-label">۲. برای تأیید، عبارت {RESET_PHRASE} را به انگلیسی بنویسید</div>',
                 unsafe_allow_html=True)
@@ -567,6 +604,37 @@ def _render_danger(club_id, archived_count, today, now):
         else:
             _set_last(False, "پاکسازی انجام نشد", "خطا در ریست دیتابیس؛ چیزی تغییر نکرد. چند لحظه بعد دوباره تلاش کنید.")
         st.rerun()
+
+
+# =============================================================
+# عیب‌یابی سرعت
+# =============================================================
+def _render_diagnostics():
+    with st.expander("بررسی سرعت اتصال به دیتابیس (برای عیب‌یابی)"):
+        st.caption("اگر صفحه‌ها کند هستند، این دکمه را بزنید: زمان ساخت اتصال و زمان هر query را اندازه می‌گیرد. "
+                   "آدرس و رمز دیتابیس نمایش داده نمی‌شود.")
+        if _button("اندازه‌گیری", key="mg_diag", type_="secondary"):
+            try:
+                st.session_state.mg_diag_result = measure_db_speed()
+            except Exception as exc:                       # عیب‌یابی نباید صفحه را بشکند
+                st.session_state.mg_diag_result = {"error": f"{type(exc).__name__}"}
+        res = st.session_state.get("mg_diag_result")
+        if not res:
+            return
+        if "error" in res:
+            st.error(f"اندازه‌گیری انجام نشد ({res['error']}). اتصال به دیتابیس را بررسی کنید.")
+            return
+        region = f" · منطقه سرور: {res['region']}" if res.get("region") else ""
+        st.markdown(_html(
+            '<div class="sum-card">',
+            f"نوع اتصال: <b>{html.escape(res['mode'])}</b>{html.escape(region)}<br>",
+            f"ساخت اتصال تازه: <b>{fa(round(res['new_connection_ms']))} میلی‌ثانیه</b><br>",
+            f"هر query روی اتصال آماده: <b>{fa(round(res['roundtrip_ms']))} میلی‌ثانیه</b><br>",
+            f"گرفتن اتصال از استخر: <b>{fa(round(res['pool_checkout_ms'], 1))} میلی‌ثانیه</b>",
+            "</div>",
+        ), unsafe_allow_html=True)
+        level, text = speed_verdict(res)
+        (st.success if level == "ok" else st.warning)(text)
 
 
 # =============================================================
@@ -598,7 +666,7 @@ def render_manage(club_id):
     labels = {
         "members": "اعضا",
         "archive": f"آرشیو ({fa(len(archived))})" if supported else "آرشیو",
-        "danger": "منطقه خطر",
+        "danger": "پاکسازی کامل",
     }
     section = st.segmented_control(
         "بخش", options=SECTION_KEYS, format_func=lambda k: labels[k],
@@ -611,4 +679,6 @@ def render_manage(club_id):
         _render_archive(club_id, archived, supported)
     else:
         st.session_state.pop("mg_pending", None)
-        _render_danger(club_id, len(archived), today, now)
+        _render_cleanup(club_id, len(archived), today, now)
+
+    _render_diagnostics()
