@@ -372,7 +372,8 @@ a.act-wa { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129
 }
 
 /* --- صفحه مدیریت و حذف: قاب عضو، کارت خطا، کارت پاکسازی کامل، دکمه‌های قرمز --- */
-.mg-card { display: flex; align-items: flex-start; gap: 12px; direction: rtl; }
+/* padding-bottom داخل خود کارت است، پس به gap و margin های خود Streamlit وابسته نیست */
+.mg-card { display: flex; align-items: flex-start; gap: 12px; direction: rtl; padding-bottom: 22px; }
 /* قاب هر عضو (key = mgc_*): کارت اطلاعات، دکمه‌ها و کارت تأیید همان عضو داخل یک کادرند */
 [class*="st-key-mgc_"] {
     background: #111A2E; border: 1px solid #1E293B; border-radius: 14px;

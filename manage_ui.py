@@ -25,7 +25,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from ai_analytics import get_subscription_checkin_counts
+from ai_analytics import get_subscription_checkin_counts, predict_churn_risk
 from checkin_ui import UNDO_WINDOW_MINUTES, _columns, is_undoable, last_visit_text, logs_from_last, to_tehran
 from db_manager import (archive_members, archive_supported, cancel_subscription, delete_members_permanently,
                         export_club_backup, get_all_members, get_archived_members, get_club_counts,
@@ -155,10 +155,39 @@ def pending_view(p):
     raise ValueError(f"unknown pending kind: {kind}")
 
 
+CHURN_COLUMNS = ["analytics_id", "member_id", "churn_risk_score", "last_calculated", "club_id",
+                 "full_name", "risk_level", "days_since_last_checkin", "remaining_sessions"]
+
+
+def risk_label(score):
+    """سطح ریسک با همان آستانه‌های صفحه «آمار و گزارشات» (۷۰ و ۴۰)"""
+    return "بالا" if score >= 70 else "متوسط" if score >= 40 else "پایین"
+
+
+def churn_table(df, club_id, now):
+    """
+    تحلیل ریسک ریزش به‌شکل جدول: ۵ ستون اول همان ستون‌های جدول ai_analytics است و ۴ ستون آخر برای خواندن راحت‌تر.
+    برنامه این امتیازها را در دیتابیس ذخیره نمی‌کند و هر بار از روی سوابق تردد محاسبه می‌کند؛
+    پس این جدول «عکس لحظه پشتیبان‌گیری» است و فقط اعضای دارای اشتراک فعال را شامل می‌شود (پرریسک‌ترین‌ها اول).
+    خروجی: (ستون‌ها, ردیف‌ها) یا None اگر چیزی برای تحلیل نباشد.
+    """
+    if df is None or len(df) == 0 or "churn_risk_score" not in df.columns:
+        return None
+    stamp = now.isoformat(timespec="seconds")
+    rows = []
+    for i, (_, r) in enumerate(df.sort_values("churn_risk_score", ascending=False).iterrows(), start=1):
+        score = round(float(r["churn_risk_score"]), 1)
+        days = r.get("days_since_last_checkin", 0)
+        left = r.get("subscription_days", 0)
+        rows.append((i, r["id"], score, stamp, club_id, r.get("name", ""), risk_label(score),
+                     0 if pd.isna(days) else int(days), 0 if pd.isna(left) else int(left)))
+    return CHURN_COLUMNS, rows
+
+
 def backup_zip(tables):
     """
     tables: {نام جدول: (ستون‌ها, ردیف‌ها)} ← بایت‌های یک فایل ZIP شامل یک CSV برای هر جدول
-    (UTF-8 همراه BOM تا Excel حروف فارسی را درست نشان دهد). جدول‌های خالی در فایل نمی‌آیند.
+    (UTF-8 همراه BOM تا Excel حروف فارسی را درست نشان دهد). جدول‌های خالی (مثل ai_analytics ذخیره‌شده در دیتابیس) در فایل نمی‌آیند.
     """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -561,12 +590,30 @@ def _render_archive(club_id, archived, supported):
 # =============================================================
 # بخش ۳: پاکسازی کامل
 # =============================================================
-def _get_backup(club_id, counts, today):
+def _backup_tables(club_id, now):
+    """
+    جدول‌های پشتیبان: اعضا، اشتراک‌ها، ترددها + ai_analytics (تحلیل ریسک ریزش، محاسبه‌شده در همین لحظه).
+    اگر جدول ai_analytics در دیتابیس هم ردیفی داشته باشد، جداگانه با نام ai_analytics_table می‌آید.
+    """
+    tables = export_club_backup(club_id)
+    stored = tables.pop("ai_analytics", None)
+    try:
+        churn = churn_table(predict_churn_risk(club_id), club_id, now)
+    except Exception:                                  # تحلیل نباید پشتیبان‌گیری را بشکند
+        churn = None
+    if churn:
+        tables["ai_analytics"] = churn
+    if stored and stored[1]:
+        tables["ai_analytics_table"] = stored
+    return tables
+
+
+def _get_backup(club_id, counts, today, now):
     """نسخه پشتیبان فقط وقتی دوباره ساخته می‌شود که تعداد داده‌ها عوض شده باشد (تایپ در کادر تأیید پرس‌وجوی تازه نمی‌زند)"""
     signature = tuple(sorted(counts.items()))
     cached = st.session_state.get("mg_backup")
     if not cached or cached["sig"] != signature:
-        cached = {"sig": signature, "data": backup_zip(export_club_backup(club_id)),
+        cached = {"sig": signature, "data": backup_zip(_backup_tables(club_id, now)),
                   "name": f"gym_backup_{today.isoformat()}.zip"}
         st.session_state.mg_backup = cached
     return cached
@@ -581,10 +628,11 @@ def _render_cleanup(club_id, archived_count, today, now):
         return
 
     st.markdown('<div class="as-label">۱. نسخه پشتیبان (پیشنهاد می‌شود)</div>', unsafe_allow_html=True)
-    backup = _get_backup(club_id, counts, today)
+    backup = _get_backup(club_id, counts, today, now)
     st.download_button("دانلود نسخه پشتیبان (ZIP)", data=backup["data"], file_name=backup["name"],
                        mime="application/zip", key="mg_download")
-    st.caption("شامل فایل‌های CSV اعضا، اشتراک‌ها و ترددها است (جدول‌های خالی نمی‌آیند) و با Excel باز می‌شود. "
+    st.caption("شامل CSV اعضا، اشتراک‌ها و ترددها، و ai_analytics.csv است. فایل ai_analytics تحلیل ریسک ریزش اعضای دارای "
+               "اشتراک فعال است که همین لحظه از روی سوابق تردد محاسبه می‌شود (برنامه این امتیازها را در دیتابیس ذخیره نمی‌کند). "
                "رمز عبور در آن نیست. اگر Excel صفر ابتدای شماره‌ها را نشان نداد، فایل سالم است؛ آن را با Data ← From Text/CSV "
                "باز کنید و ستون را Text بگذارید.")
 
