@@ -156,7 +156,7 @@ def pending_view(p):
 
 
 CHURN_COLUMNS = ["analytics_id", "member_id", "churn_risk_score", "last_calculated", "club_id",
-                 "full_name", "risk_level", "days_since_last_checkin", "remaining_sessions"]
+                 "full_name", "package", "risk_level", "days_since_last_checkin", "remaining_sessions"]
 
 
 def risk_label(score):
@@ -164,9 +164,20 @@ def risk_label(score):
     return "بالا" if score >= 70 else "متوسط" if score >= 40 else "پایین"
 
 
+def package_name(sessions):
+    """«12 جلسه‌ای» / «24 جلسه‌ای» (اگر نوع بسته معلوم نباشد «نامشخص»)"""
+    try:
+        if sessions is None or pd.isna(sessions):
+            return "نامشخص"
+        return f"{int(sessions)} جلسه‌ای"
+    except (TypeError, ValueError):
+        return "نامشخص"
+
+
 def churn_table(df, club_id, now):
     """
-    تحلیل ریسک ریزش به‌شکل جدول: ۵ ستون اول همان ستون‌های جدول ai_analytics است و ۴ ستون آخر برای خواندن راحت‌تر.
+    تحلیل ریسک ریزش به‌شکل جدول: ۵ ستون اول همان ستون‌های جدول ai_analytics است و ۵ ستون بعدی برای خواندن راحت‌تر
+    (نام، نوع بسته ۱۲ یا ۲۴ جلسه‌ای، سطح ریسک، روز غیبت، جلسه باقی‌مانده).
     برنامه این امتیازها را در دیتابیس ذخیره نمی‌کند و هر بار از روی سوابق تردد محاسبه می‌کند؛
     پس این جدول «عکس لحظه پشتیبان‌گیری» است و فقط اعضای دارای اشتراک فعال را شامل می‌شود (پرریسک‌ترین‌ها اول).
     خروجی: (ستون‌ها, ردیف‌ها) یا None اگر چیزی برای تحلیل نباشد.
@@ -179,8 +190,8 @@ def churn_table(df, club_id, now):
         score = round(float(r["churn_risk_score"]), 1)
         days = r.get("days_since_last_checkin", 0)
         left = r.get("subscription_days", 0)
-        rows.append((i, r["id"], score, stamp, club_id, r.get("name", ""), risk_label(score),
-                     0 if pd.isna(days) else int(days), 0 if pd.isna(left) else int(left)))
+        rows.append((i, r["id"], score, stamp, club_id, r.get("name", ""), package_name(r.get("package_sessions")),
+                     risk_label(score), 0 if pd.isna(days) else int(days), 0 if pd.isna(left) else int(left)))
     return CHURN_COLUMNS, rows
 
 
@@ -631,8 +642,9 @@ def _render_cleanup(club_id, archived_count, today, now):
     backup = _get_backup(club_id, counts, today, now)
     st.download_button("دانلود نسخه پشتیبان (ZIP)", data=backup["data"], file_name=backup["name"],
                        mime="application/zip", key="mg_download")
-    st.caption("شامل CSV اعضا، اشتراک‌ها و ترددها، و ai_analytics.csv است. فایل ai_analytics تحلیل ریسک ریزش اعضای دارای "
-               "اشتراک فعال است که همین لحظه از روی سوابق تردد محاسبه می‌شود (برنامه این امتیازها را در دیتابیس ذخیره نمی‌کند). "
+    st.caption("شامل CSV اعضا، بسته‌ها، اشتراک‌ها و ترددها، و ai_analytics.csv است. فایل ai_analytics تحلیل ریسک ریزش اعضای "
+               "دارای اشتراک فعال (همراه با نوع بسته ۱۲ یا ۲۴ جلسه‌ای) است که همین لحظه از روی سوابق تردد محاسبه می‌شود "
+               "(برنامه این امتیازها را در دیتابیس ذخیره نمی‌کند). "
                "رمز عبور در آن نیست. اگر Excel صفر ابتدای شماره‌ها را نشان نداد، فایل سالم است؛ آن را با Data ← From Text/CSV "
                "باز کنید و ستون را Text بگذارید.")
 

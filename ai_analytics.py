@@ -170,7 +170,24 @@ def predict_churn_risk(club_id):
                 return 0.0
 
         df_members['churn_risk_score'] = df_members.apply(calculate_risk_score, axis=1)
-        
+
+        # ۲-ب. نوع بسته (۱۲ یا ۲۴ جلسه‌ای): اگر اشتراک به یک بسته وصل است همان؛ وگرنه (اشتراک‌های قدیمیِ بدون بسته)
+        # با همان قاعده‌ی بالا حدس زده می‌شود: جلسه باقی‌مانده + ترددهای ثبت‌شده بیشتر از ۱۲ ⇒ ۲۴، وگرنه ۱۲
+        def detect_package_sessions(row):
+            try:
+                real = row.get('package_sessions')
+                if real is not None and not pd.isna(real):
+                    return int(real)
+                remaining = row.get('subscription_days', 0)
+                remaining = 0.0 if remaining is None or pd.isna(remaining) else float(remaining)
+                sub_key = clean_id(row.get('subscription_id'))
+                used = sub_checkins.get(sub_key, 0) if sub_key else 0
+                return 24 if remaining + used > 12 else 12
+            except Exception:
+                return 12
+
+        df_members['package_sessions'] = df_members.apply(detect_package_sessions, axis=1)
+
         # ۳. دسته‌بندی ریسک
         def map_to_label(score):
             if score >= 70:

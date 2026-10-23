@@ -326,6 +326,53 @@ def _not_archived(alias="m"):
     return f" AND {prefix}archived_at IS NULL"
 
 
+# ---------------------------------------------------------------
+# بسته‌ها: هر اشتراک باید به یک ردیف جدول packages وصل باشد (package_id)
+# برنامه دو بسته دارد: «بسته ۱» با ۱۲ جلسه و «بسته ۲» با ۲۴ جلسه (همان نام‌های صفحه «تخصیص بسته»).
+# ---------------------------------------------------------------
+PACKAGE_TITLES = {12: "بسته ۱ (۱۲ جلسه‌ای)", 24: "بسته ۲ (۲۴ جلسه‌ای)"}
+_FA_TRANS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def package_title(sessions):
+    """نام بسته برای ذخیره در دیتابیس؛ برای تعداد جلسه‌های غیرمعمول: «بسته N جلسه‌ای»"""
+    sessions = int(sessions)
+    return PACKAGE_TITLES.get(sessions) or f"بسته {str(sessions).translate(_FA_TRANS)} جلسه‌ای"
+
+
+def get_or_create_package_id(cursor, club_id, sessions, validity_days=30):
+    """
+    شناسه بسته‌ای که با تعداد جلسه و مدت اعتبار داده‌شده می‌خواند؛ اگر نبود برای همان باشگاه ساخته می‌شود.
+    باید داخل تراکنش بازِ صدازننده استفاده شود. این بخش با SAVEPOINT ایزوله است: اگر هر مشکلی پیش بیاید
+    فقط None برمی‌گرداند و ثبت اشتراک (کار اصلی) هرگز به‌خاطر آن متوقف نمی‌شود.
+    """
+    try:
+        sessions, validity_days = int(sessions), int(validity_days)
+    except (TypeError, ValueError):
+        return None
+    try:
+        cursor.execute("SAVEPOINT pkg_lookup")
+        cursor.execute("""
+            SELECT package_id FROM public.packages
+            WHERE club_id = %s AND total_sessions = %s AND validity_days = %s
+            ORDER BY package_id LIMIT 1
+        """, (club_id, sessions, validity_days))
+        row = cursor.fetchone()
+        if row is None:
+            cursor.execute("""
+                INSERT INTO public.packages (title, total_sessions, validity_days, club_id)
+                VALUES (%s, %s, %s, %s)
+                RETURNING package_id
+            """, (package_title(sessions), sessions, validity_days, club_id))
+            row = cursor.fetchone()
+        cursor.execute("RELEASE SAVEPOINT pkg_lookup")
+        return row[0]
+    except Exception as e:
+        print(f"Error in get_or_create_package_id: {e}")
+        cursor.execute("ROLLBACK TO SAVEPOINT pkg_lookup")      # اگر اتصال خراب باشد همین‌جا خطا می‌دهد و تراکنش اصلی خاتمه می‌یابد
+        return None
+
+
 def add_member(full_name, phone, national_id, club_id, subscription_days=0, first_name=None, last_name=None):
     """
     ثبت عضو جدید در دیتابیس.
@@ -375,11 +422,12 @@ def add_member(full_name, phone, national_id, club_id, subscription_days=0, firs
         member_id = cursor.fetchone()[0]
 
         if subscription_days > 0:
+            package_id = get_or_create_package_id(cursor, club_id, subscription_days, 30)
             cursor.execute("""
                 INSERT INTO public.subscriptions 
-                (member_id, remaining_sessions, start_date, end_date, status, club_id)
-                VALUES (%s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE', %s)
-            """, (member_id, subscription_days, club_id))
+                (member_id, package_id, remaining_sessions, start_date, end_date, status, club_id)
+                VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE', %s)
+            """, (member_id, package_id, subscription_days, club_id))
 
         conn.commit()
         return True, f"عضو جدید '{full_name}' با موفقیت ثبت شد."
@@ -418,14 +466,17 @@ def get_all_members(club_id):
             COALESCE(s.remaining_sessions, 0) AS remaining_sessions,
             COALESCE(s.subscription_id::text, '-') AS subscription_id,
             COALESCE(s.end_date::text, '-') AS end_date,
-            COALESCE(s.status, 'EXPIRED') AS status
+            COALESCE(s.status, 'EXPIRED') AS status,
+            p.total_sessions AS package_sessions,
+            p.title AS package_title
         FROM public.members m
         LEFT JOIN (
-            SELECT member_id, subscription_id, remaining_sessions, end_date, status,
+            SELECT member_id, subscription_id, package_id, remaining_sessions, end_date, status,
                    ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
             FROM public.subscriptions
             WHERE club_id = %s
         ) s ON m.member_id = s.member_id AND s.rn = 1
+        LEFT JOIN public.packages p ON p.package_id = s.package_id
         WHERE m.club_id = %s{_not_archived()}
         ORDER BY m.member_id DESC
     """
@@ -446,7 +497,9 @@ def get_all_members(club_id):
             "subscription_days": r[5],
             "subscription_id": str(r[6]),
             "end_date": str(r[7]),
-            "status": r[8]
+            "status": r[8],
+            "package_sessions": r[9],
+            "package_title": r[10],
         })
         
     return result
@@ -472,14 +525,17 @@ def get_active_members(club_id):
             m.join_date,
             s.remaining_sessions,
             s.subscription_id,
-            s.end_date
+            s.end_date,
+            p.total_sessions AS package_sessions,
+            p.title AS package_title
         FROM public.members m
         INNER JOIN (
-            SELECT member_id, subscription_id, remaining_sessions, end_date,
+            SELECT member_id, subscription_id, package_id, remaining_sessions, end_date,
                    ROW_NUMBER() OVER (PARTITION BY member_id ORDER BY subscription_id DESC) as rn
             FROM public.subscriptions
             WHERE club_id = %s AND status = 'ACTIVE' AND end_date >= CURRENT_DATE
         ) s ON m.member_id = s.member_id AND s.rn = 1
+        LEFT JOIN public.packages p ON p.package_id = s.package_id
         WHERE m.club_id = %s{_not_archived()}
         ORDER BY m.member_id DESC
     """
@@ -501,7 +557,9 @@ def get_active_members(club_id):
             "subscription_days": r[5],
             "subscription_id": str(r[6]),
             "end_date": end_dt,
-            "status": "ACTIVE"
+            "status": "ACTIVE",
+            "package_sessions": r[8],
+            "package_title": r[9],
         })
         
     return result
@@ -519,11 +577,12 @@ def update_subscription(member_id, sessions_to_add, club_id, overwrite=True):
                 WHERE member_id = %s AND club_id = %s AND status = 'ACTIVE'
             """, (member_id, club_id))
             
+        package_id = get_or_create_package_id(cursor, club_id, sessions_to_add, 30)
         cursor.execute("""
             INSERT INTO public.subscriptions 
-            (member_id, remaining_sessions, start_date, end_date, status, club_id)
-            VALUES (%s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE', %s)
-        """, (member_id, sessions_to_add, club_id))
+            (member_id, package_id, remaining_sessions, start_date, end_date, status, club_id)
+            VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'ACTIVE', %s)
+        """, (member_id, package_id, sessions_to_add, club_id))
         
         conn.commit()
         conn.close()
@@ -860,12 +919,13 @@ def assign_package(member_id, club_id, sessions, validity_days=30):
 
         start_date = datetime.now(ZoneInfo("Asia/Tehran")).date()
         end_date = start_date + timedelta(days=validity_days)
+        package_id = get_or_create_package_id(cursor, club_id, sessions, validity_days)
         cursor.execute("""
             INSERT INTO public.subscriptions
-            (member_id, remaining_sessions, start_date, end_date, status, club_id)
-            VALUES (%s, %s, %s, %s, 'ACTIVE', %s)
+            (member_id, package_id, remaining_sessions, start_date, end_date, status, club_id)
+            VALUES (%s, %s, %s, %s, %s, 'ACTIVE', %s)
             RETURNING subscription_id
-        """, (member_id, sessions, start_date, end_date, club_id))
+        """, (member_id, package_id, sessions, start_date, end_date, club_id))
         subscription_id = cursor.fetchone()[0]
 
         conn.commit()
@@ -1336,6 +1396,7 @@ def get_club_counts(club_id):
 
 _BACKUP_QUERIES = {
     "members": "SELECT * FROM public.members WHERE club_id = %s ORDER BY member_id",
+    "packages": "SELECT * FROM public.packages WHERE club_id = %s ORDER BY package_id",
     "subscriptions": "SELECT * FROM public.subscriptions WHERE club_id = %s ORDER BY subscription_id",
     "checkins": "SELECT * FROM public.checkins WHERE club_id = %s ORDER BY checkin_id",
     "ai_analytics": "SELECT * FROM public.ai_analytics WHERE club_id = %s ORDER BY analytics_id",

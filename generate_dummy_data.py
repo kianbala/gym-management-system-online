@@ -1,7 +1,7 @@
 import random
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from db_manager import get_connection
+from db_manager import get_connection, get_or_create_package_id
 
 TEHRAN_TZ = ZoneInfo("Asia/Tehran")
 
@@ -150,6 +150,7 @@ def generate_data(username):
 
         risk_profiles = build_risk_plan(TOTAL_MEMBERS)
 
+        package_ids = {}                                   # تعداد جلسه ← شناسه بسته (برای هر باشگاه فقط یک‌بار ساخته/پیدا می‌شود)
         used_names = set()
         planned_scores = {'high': [], 'medium': [], 'low': []}
         added_count = 0
@@ -194,11 +195,14 @@ def generate_data(username):
             sub_status = 'ACTIVE'
 
             # درج اشتراک
+            if total_sessions not in package_ids:
+                package_ids[total_sessions] = get_or_create_package_id(cursor, club_id, total_sessions, 30)
+
             cursor.execute("""
-                INSERT INTO public.subscriptions (member_id, remaining_sessions, start_date, end_date, status, club_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO public.subscriptions (member_id, package_id, remaining_sessions, start_date, end_date, status, club_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING subscription_id;
-            """, (member_id, remaining, start_date, end_date, sub_status, club_id))
+            """, (member_id, package_ids[total_sessions], remaining, start_date, end_date, sub_status, club_id))
 
             sub_id = cursor.fetchone()[0]
 
