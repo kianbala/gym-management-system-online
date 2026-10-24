@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from db_manager import get_all_members, get_attendance_logs
+from db_manager import get_all_members, get_last_checkins
 from ai_analytics import get_subscription_checkin_counts
 from ui_styles import PANEL_STYLE
 
@@ -331,11 +331,23 @@ def render_sidebar():
 # =============================================================
 # صفحه داشبورد و اعضا
 # =============================================================
+def _logs_from_last(last_map):
+    """
+    آخرین تردد هر عضو {member_id: زمان} را به قالب لاگ‌هایی تبدیل می‌کند که build_rows می‌فهمد.
+    (build_rows از هر عضو فقط جدیدترین تردد را برمی‌دارد؛ پس لازم نیست همه ترددهای باشگاه از دیتابیس خوانده شود.)
+    نسخه هم‌ارز این تابع در checkin_ui با نام logs_from_last هست؛ اینجا جدا نوشته شد تا import دایره‌ای پیش نیاید.
+    """
+    return [
+        {"member_id": member_id, "check_in_time": value.isoformat() if hasattr(value, "isoformat") else str(value)}
+        for member_id, value in last_map.items() if value is not None
+    ]
+
+
 def render_dashboard(club_id):
     today = datetime.now(TEHRAN).date()
     rows = build_rows(
         get_all_members(club_id),
-        get_attendance_logs(club_id),
+        _logs_from_last(get_last_checkins(club_id)),
         get_subscription_checkin_counts(club_id),
         today,
     )
